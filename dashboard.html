@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bitget Bot — Trading Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #f5f4f0;
+  --surface:  #ffffff;
+  --border:   #e2e0d8;
+  --border2:  #ccc9bc;
+  --text:     #1a1916;
+  --muted:    #7a7568;
+  --accent:   #1a1916;
+  --green:    #1a7a4a;
+  --green-bg: #edf7f1;
+  --red:      #c0392b;
+  --red-bg:   #fdf0ee;
+  --yellow:   #b07d20;
+  --yellow-bg:#fdf6e3;
+  --blue:     #1a4a7a;
+  --blue-bg:  #edf2f7;
+  --mono:     'DM Mono', monospace;
+  --sans:     'DM Sans', sans-serif;
+  --radius:   6px;
+  --shadow:   0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── Layout ───────────────────────────────────────────── */
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 20px; height: 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.topbar-logo {
+  font-family: var(--mono); font-size: 13px; font-weight: 500;
+  letter-spacing: .04em; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.topbar-logo span { opacity: .4; }
+
+.topbar-sep { width: 1px; height: 20px; background: var(--border); }
+
+.topbar-status {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border2); }
+.dot.live { background: var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.api-input {
+  font-family: var(--mono); font-size: 11px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 4px 8px; background: var(--bg); color: var(--text);
+  width: 220px; outline: none;
+}
+.api-input:focus { border-color: var(--accent); }
+
+.btn {
+  font-family: var(--sans); font-size: 12px; font-weight: 500;
+  padding: 5px 12px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); cursor: pointer; transition: all .15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg); border-color: var(--border2); }
+.btn:active { transform: scale(.98); }
+.btn.primary { background: var(--text); color: #fff; border-color: var(--text); }
+.btn.primary:hover { opacity: .85; background: var(--text); }
+.btn.success { background: var(--green); color: #fff; border-color: var(--green); }
+.btn.danger  { background: var(--red);   color: #fff; border-color: var(--red); }
+.btn.sm { padding: 3px 8px; font-size: 11px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Main body */
+.body { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar nav */
+.sidenav {
+  width: 180px; flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex; flex-direction: column;
+  padding: 12px 0;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; cursor: pointer;
+  font-size: 12px; font-weight: 500; color: var(--muted);
+  border-left: 2px solid transparent;
+  transition: all .12s; user-select: none;
+}
+.nav-item:hover { color: var(--text); background: var(--bg); }
+.nav-item.active { color: var(--text); border-left-color: var(--text); background: var(--bg); }
+.nav-icon { font-size: 14px; width: 18px; text-align: center; }
+
+.nav-section {
+  padding: 16px 16px 4px;
+  font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  color: var(--border2); text-transform: uppercase;
+}
+
+/* Content area */
+.content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+/* Panels */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.panel-title {
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.panel-actions { display: flex; gap: 6px; }
+
+/* Stat cards row */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.stat-label {
+  font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.stat-value {
+  font-family: var(--mono); font-size: 22px; font-weight: 500;
+  line-height: 1; color: var(--text);
+}
+.stat-value.green { color: var(--green); }
+.stat-value.red   { color: var(--red); }
+.stat-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th {
+  text-align: left; padding: 8px 14px;
+  font-size: 10px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12px;
+  vertical-align: middle;
+}
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: var(--bg); }
+
+/* Badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  padding: 2px 7px; border-radius: 3px; white-space: nowrap;
+}
+.badge.green  { background: var(--green-bg);  color: var(--green); }
+.badge.red    { background: var(--red-bg);    color: var(--red); }
+.badge.yellow { background: var(--yellow-bg); color: var(--yellow); }
+.badge.blue   { background: var(--blue-bg);   color: var(--blue); }
+.badge.gray   { background: var(--bg);        color: var(--muted); border: 1px solid var(--border); }
+
+/* Action group */
+.action-group { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* AI Report panel */
+.ai-report {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px;
+  font-size: 12px; line-height: 1.7;
+}
+.ai-section { margin-bottom: 12px; }
+.ai-section-title {
+  font-size: 10px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.ai-row { display: flex; gap: 6px; margin-bottom: 4px; }
+.ai-key { color: var(--muted); font-family: var(--mono); min-width: 90px; font-size: 11px; }
+.ai-val { font-family: var(--mono); font-size: 11px; }
+.conf-bar { display: inline-block; font-family: var(--mono); letter-spacing: -1px; font-size: 12px; }
+
+/* Log viewer */
+.log-box {
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+  background: #1a1916; color: #c8c4b8;
+  padding: 14px; border-radius: var(--radius);
+  overflow-y: auto; height: 340px;
+  white-space: pre-wrap; word-break: break-all;
+}
+.log-box .log-err  { color: #e87474; }
+.log-box .log-warn { color: #e8c274; }
+.log-box .log-ok   { color: #74e89a; }
+.log-box .log-ai   { color: #74b4e8; }
+
+/* Config editor */
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.field input, .field select {
+  font-family: var(--mono); font-size: 13px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 7px 10px; background: var(--bg); color: var(--text);
+  outline: none; transition: border-color .15s;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+
+/* Trade form */
+.trade-form { display: flex; gap: 8px; align-items: flex-end; padding: 14px 16px; border-top: 1px solid var(--border); }
+.trade-form .field { flex: 1; }
+
+/* Charts placeholder */
+.chart-area {
+  height: 180px; background: var(--bg);
+  border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  border: 1px dashed var(--border2);
+}
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); padding: 0 16px; background: var(--surface); }
+.tab {
+  padding: 10px 14px; font-size: 12px; font-weight: 500;
+  cursor: pointer; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all .12s; user-select: none;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--text); }
+
+/* Hidden tab content */
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* Empty state */
+.empty {
+  padding: 40px; text-align: center;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
+
+/* Toast */
+.toast-area { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 999; }
+.toast {
+  background: var(--text); color: #fff;
+  padding: 10px 16px; border-radius: var(--radius);
+  font-size: 12px; font-family: var(--mono);
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  animation: slideIn .2s ease;
+  max-width: 320px;
+}
+.toast.ok  { background: var(--green); }
+.toast.err { background: var(--red); }
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Responsive */
+@media (max-width: 1200px) { .stats-row { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) {
+  .sidenav { display: none; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Page visibility */
+.page { display: none; }
+.page.active { display: flex; flex-direction: column; gap: 16px; }
+
+/* Spinner */
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Modal */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surface); border-radius: 8px;
+  border: 1px solid var(--border); box-shadow: 0 8px 40px rgba(0,0,0,.15);
+  padding: 24px; min-width: 420px; max-width: 600px; width: 100%;
+  max-height: 80vh; overflow-y: auto;
+}
+.modal-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.modal-close { float: right; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── Top Bar ─────────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-logo">
+    <span>▣</span> BITGET BOT <span>/ TRADING DESK</span>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-status">
+    <div class="dot" id="connDot"></div>
+    <span id="connLabel">Menghubungkan...</span>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-status">
+    <span id="modeLabel">—</span>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-status">
+    AI Analyst: <span id="aiLabel">—</span>
+  </div>
+  <div class="topbar-right">
+    <input class="api-input" id="apiUrl" placeholder="http://localhost:3000" value="http://localhost:3000">
+    <button class="btn primary" onclick="connect()">Connect</button>
+    <button class="btn" onclick="refreshAll()" title="Refresh data"><span id="refreshIcon">↻</span></button>
+    <span style="font-family:var(--mono);font-size:11px;color:var(--muted)" id="lastUpdate"></span>
+  </div>
+</header>
+
+<div class="body">
+<!-- ── Side Nav ──────────────────────────────────────────────────────────── -->
+<nav class="sidenav">
+  <div class="nav-section">Monitor</div>
+  <div class="nav-item active" onclick="showPage('overview')"><span class="nav-icon">◈</span> Overview</div>
+  <div class="nav-item" onclick="showPage('positions')"><span class="nav-icon">◎</span> Positions</div>
+  <div class="nav-item" onclick="showPage('pending')"><span class="nav-icon">◷</span> Pending <span id="pendingBadge" style="margin-left:auto;display:none" class="badge yellow">0</span></div>
+  <div class="nav-section">Trading</div>
+  <div class="nav-item" onclick="showPage('trade')"><span class="nav-icon">⇅</span> Buy / Sell</div>
+  <div class="nav-item" onclick="showPage('screen')"><span class="nav-icon">⊙</span> Screening</div>
+  <div class="nav-item" onclick="showPage('analyze')"><span class="nav-icon">◐</span> AI Analyst</div>
+  <div class="nav-section">History</div>
+  <div class="nav-item" onclick="showPage('history')"><span class="nav-icon">≡</span> Trade Log</div>
+  <div class="nav-item" onclick="showPage('logs')"><span class="nav-icon">⊟</span> Bot Logs</div>
+  <div class="nav-section">Settings</div>
+  <div class="nav-item" onclick="showPage('config')"><span class="nav-icon">⚙</span> Config</div>
+</nav>
+
+<!-- ── Content ────────────────────────────────────────────────────────────── -->
+<main class="content" id="content">
+
+<!-- ═══════════════ PAGE: OVERVIEW ═════════════════════════════════════════ -->
+<div class="page active" id="page-overview">
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total PnL</div>
+      <div class="stat-value" id="st-pnl">—</div>
+      <div class="stat-sub" id="st-pnl-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open Positions</div>
+      <div class="stat-value" id="st-open">—</div>
+      <div class="stat-sub" id="st-open-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pending Approval</div>
+      <div class="stat-value" id="st-pending">—</div>
+      <div class="stat-sub">awaiting action</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Closed Trades</div>
+      <div class="stat-value" id="st-closed">—</div>
+      <div class="stat-sub">all time</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Budget / Trade</div>
+      <div class="stat-value" id="st-budget">—</div>
+      <div class="stat-sub" id="st-budget-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">TP / SL</div>
+      <div class="stat-value" id="st-tpsl">—</div>
+      <div class="stat-sub" id="st-trail">—</div>
+    </div>
+  </div>
+
+  <!-- Open positions mini -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">◎ Open Positions</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="showPage('positions')">View All →</button>
+      </div>
+    </div>
+    <table class="tbl" id="ov-positions-tbl">
+      <thead><tr>
+        <th>Symbol</th><th>Entry</th><th>Current</th><th>PnL %</th><th>PnL USDT</th><th>Status</th><th>Hold</th><th>Action</th>
+      </tr></thead>
+      <tbody id="ov-positions-body"><tr><td colspan="8" class="empty">Tidak ada posisi terbuka</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Pending mini -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">◷ Pending Approval</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="showPage('pending')">View All →</button>
+      </div>
+    </div>
+    <table class="tbl">
+      <thead><tr>
+        <th>Symbol</th><th>Price</th><th>Change 24h</th><th>AI Verdict</th><th>Triggered</th><th>Sisa</th><th>Action</th>
+      </tr></thead>
+      <tbody id="ov-pending-body"><tr><td colspan="7" class="empty">Tidak ada kandidat pending</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: POSITIONS ════════════════════════════════════════ -->
+<div class="page" id="page-positions">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">◎ Open Positions — Detail</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="refreshAll()">↻ Refresh</button>
+      </div>
+    </div>
+    <table class="tbl">
+      <thead><tr>
+        <th>Symbol</th><th>Strategy</th><th>Entry Price</th><th>Current</th><th>PnL %</th><th>PnL USDT</th><th>Qty</th><th>SL</th><th>Status</th><th>Opened</th><th>Action</th>
+      </tr></thead>
+      <tbody id="pos-body"><tr><td colspan="11" class="empty">Tidak ada posisi terbuka</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: PENDING ══════════════════════════════════════════ -->
+<div class="page" id="page-pending">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">◷ Pending Approval Queue</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="refreshAll()">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="pending-cards" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div class="empty">Tidak ada kandidat pending</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: TRADE ════════════════════════════════════════════ -->
+<div class="page" id="page-trade">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">▲ Manual Buy</div></div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+        <div class="field">
+          <label>Symbol</label>
+          <input id="buy-symbol" placeholder="BTCUSDT" style="text-transform:uppercase">
+        </div>
+        <div style="background:var(--bg);border-radius:var(--radius);padding:12px;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
+          Budget: <span id="buy-budget" style="color:var(--text)">—</span> USDT<br>
+          Max positions: <span id="buy-maxpos" style="color:var(--text)">—</span><br>
+          Current open: <span id="buy-openpos" style="color:var(--text)">—</span>
+        </div>
+        <div id="buy-price-preview" style="font-family:var(--mono);font-size:12px;color:var(--muted)">Ketik symbol untuk preview harga</div>
+        <button class="btn success" style="width:100%" onclick="doBuy()">Buy Market</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">▼ Manual Sell</div></div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+        <div class="field">
+          <label>Select Position</label>
+          <select id="sell-symbol">
+            <option value="">— Pilih posisi —</option>
+          </select>
+        </div>
+        <div id="sell-preview" style="background:var(--bg);border-radius:var(--radius);padding:12px;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
+          Pilih posisi untuk lihat detail
+        </div>
+        <button class="btn danger" style="width:100%" onclick="doSell()">Sell Market</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: SCREENING ════════════════════════════════════════ -->
+<div class="page" id="page-screen">
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">⊙ Screening Control</div></div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div class="panel" style="padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">🧠</div>
+          <div style="font-weight:600;margin-bottom:4px;font-size:12px">MTF Smart Money</div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:12px">1D + 4H + 1H + OB Detection</div>
+          <button class="btn primary" style="width:100%" onclick="doScreen('mtf')">Run MTF</button>
+        </div>
+        <div class="panel" style="padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">📈</div>
+          <div style="font-weight:600;margin-bottom:4px;font-size:12px">Trend Following</div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:12px">EMA Stack + ADX + RSI</div>
+          <button class="btn" style="width:100%" onclick="doScreen('trend')">Run Trend</button>
+        </div>
+        <div class="panel" style="padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">🔄</div>
+          <div style="font-weight:600;margin-bottom:4px;font-size:12px">Reversal Hunter</div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:12px">RSI Oversold + OB + Volume</div>
+          <button class="btn" style="width:100%" onclick="doScreen('reversal')">Run Reversal</button>
+        </div>
+      </div>
+      <div class="panel" style="padding:14px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Management Cycle</div>
+        <button class="btn" onclick="doManage()">⚙ Run Management (TP/SL check)</button>
+        <span style="color:var(--muted);font-size:11px;margin-left:10px">Evaluasi semua posisi terbuka sekarang</span>
+      </div>
+      <div id="screen-log" style="display:none" class="log-box" style="height:200px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: AI ANALYST ═══════════════════════════════════════ -->
+<div class="page" id="page-analyze">
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">◐ AI Analyst — On Demand</div></div>
+    <div style="padding:20px;display:flex;gap:10px">
+      <input id="ai-symbol" class="api-input" style="width:180px;font-size:13px;padding:8px 12px" placeholder="BTCUSDT">
+      <button class="btn primary" onclick="doAnalyze()" id="analyzeBtn">Analyze</button>
+      <span style="color:var(--muted);font-size:12px;align-self:center">Estimasi 30-60 detik</span>
+    </div>
+  </div>
+  <div id="ai-result" style="display:none" class="panel">
+    <div class="panel-header">
+      <div class="panel-title" id="ai-result-title">AI Report</div>
+    </div>
+    <div style="padding:16px" id="ai-result-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: HISTORY ══════════════════════════════════════════ -->
+<div class="page" id="page-history">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">≡ Trade History</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="loadHistory()">↻ Refresh</button>
+      </div>
+    </div>
+    <table class="tbl">
+      <thead><tr>
+        <th>Time</th><th>Side</th><th>Symbol</th><th>Price</th><th>Qty</th><th>Reason</th>
+      </tr></thead>
+      <tbody id="history-body"><tr><td colspan="6" class="empty">Load history...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: LOGS ═════════════════════════════════════════════ -->
+<div class="page" id="page-logs">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">⊟ Bot Logs</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="loadLogs()">↻ Refresh</button>
+        <button class="btn sm" onclick="toggleAutoLog()" id="autoLogBtn">Auto: ON</button>
+      </div>
+    </div>
+    <div style="padding:12px">
+      <div class="log-box" id="log-box">Connecting...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ PAGE: CONFIG ═══════════════════════════════════════════ -->
+<div class="page" id="page-config">
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">⚙ Configuration</div>
+      <div class="panel-actions">
+        <button class="btn sm" onclick="loadConfig()">↻ Reload</button>
+        <button class="btn primary" onclick="saveConfig()">Save Config</button>
+      </div>
+    </div>
+    <div class="config-grid" id="config-grid">
+      <div class="empty" style="grid-column:1/-1">Loading config...</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Whitelist Editor</div></div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:12px;color:var(--muted)">Satu symbol per baris. Koin yang ada di whitelist saja yang akan di-scan oleh MTF screener.</div>
+      <textarea id="whitelist-editor" style="font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:var(--radius);padding:10px;background:var(--bg);color:var(--text);width:100%;height:200px;outline:none;resize:vertical" placeholder="BTCUSDT&#10;ETHUSDT&#10;SOLUSDT"></textarea>
+      <div><button class="btn primary" onclick="saveWhitelist()">Save Whitelist</button></div>
+    </div>
+  </div>
+</div>
+
+</main>
+</div>
+</div>
+
+<!-- Toast area -->
+<div class="toast-area" id="toastArea"></div>
+
+<!-- AI Detail Modal -->
+<div class="modal-bg" id="aiModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="aiModalTitle">AI Report</span>
+      <span class="modal-close" onclick="closeModal('aiModal')">×</span>
+    </div>
+    <div id="aiModalBody"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let API = localStorage.getItem('api_url') || 'http://localhost:3000';
+let _data = null;
+let _autoRefresh = null;
+let _autoLog = true;
+let _logTimer = null;
+let _fullConfig = null;
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('apiUrl').value = API;
+  connect();
+});
+
+function connect() {
+  API = document.getElementById('apiUrl').value.replace(/\/$/, '');
+  localStorage.setItem('api_url', API);
+  refreshAll();
+  if (_autoRefresh) clearInterval(_autoRefresh);
+  _autoRefresh = setInterval(refreshAll, 10000);
+}
+
+async function refreshAll() {
+  document.getElementById('refreshIcon').className = 'spin';
+  try {
+    const res = await apiFetch('/api/status');
+    if (res.ok) {
+      _data = res;
+      renderAll(res);
+      setConn(true);
+    }
+  } catch(e) {
+    setConn(false);
+  }
+  document.getElementById('refreshIcon').textContent = '↻';
+  document.getElementById('refreshIcon').className = '';
+  document.getElementById('lastUpdate').textContent = 'Updated ' + new Date().toLocaleTimeString('id-ID');
+}
+
+// ── API helper ─────────────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const secret = localStorage.getItem('api_secret') || '';
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', 'X-Secret': secret, ...opts.headers },
+    ...opts,
+  });
+  return res.json();
+}
+
+async function apiPost(path, body) {
+  return apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderAll(d) {
+  renderStats(d);
+  renderOvPositions(d.positions);
+  renderOvPending(d.pending);
+  renderPositionsPage(d.positions);
+  renderPendingPage(d.pending);
+  renderTradeForm(d);
+  // Pending badge
+  const nb = d.pending?.length || 0;
+  const pb = document.getElementById('pendingBadge');
+  pb.style.display = nb > 0 ? '' : 'none';
+  pb.textContent = nb;
+}
+
+function setConn(ok) {
+  const dot   = document.getElementById('connDot');
+  const label = document.getElementById('connLabel');
+  dot.className   = 'dot' + (ok ? ' live' : '');
+  label.textContent = ok ? 'Connected' : 'Disconnected';
+}
+
+function renderStats(d) {
+  const cfg = d.config || {};
+  const pnl = d.stats?.totalPnlUsdt ?? 0;
+  const el  = id => document.getElementById(id);
+
+  el('st-pnl').textContent       = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' USDT';
+  el('st-pnl').className         = 'stat-value ' + (pnl >= 0 ? 'green' : 'red');
+  el('st-open').textContent      = (d.stats?.openPositions ?? '—') + '/' + (cfg.maxOpenPositions ?? '—');
+  el('st-open-sub').textContent  = 'slots used';
+  el('st-pending').textContent   = d.pending?.length ?? '—';
+  el('st-closed').textContent    = d.stats?.closedCount ?? '—';
+  el('st-budget').textContent    = cfg.budgetPerTrade ?? '—';
+  el('st-budget-sub').textContent= 'USDT per trade';
+  el('st-tpsl').textContent      = `+${cfg.takeProfitPct ?? '—'}% / ${cfg.stopLossPct ?? '—'}%`;
+  el('st-trail').textContent     = `Trail ${cfg.trailPct ?? '—'}% after TP1`;
+  el('modeLabel').textContent    = cfg.isDryRun ? '🧪 DRY RUN' : '💸 LIVE TRADING';
+  const aiSt = cfg.aiStatus;
+  if (aiSt?.enabled) {
+    el('aiLabel').textContent = `🤖 ${aiSt.provider} / ${aiSt.model}`;
+  } else {
+    el('aiLabel').textContent = '⚠ Set GEMINI_API_KEY di .env';
+  }
+}
+
+function renderOvPositions(positions) {
+  const tbody = document.getElementById('ov-positions-body');
+  const entries = Object.entries(positions || {});
+  if (!entries.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">Tidak ada posisi terbuka</td></tr>'; return; }
+  tbody.innerHTML = entries.map(([sym, p]) => posRow(sym, p, true)).join('');
+}
+
+function renderPositionsPage(positions) {
+  const tbody = document.getElementById('pos-body');
+  const entries = Object.entries(positions || {});
+  if (!entries.length) { tbody.innerHTML = '<tr><td colspan="11" class="empty">Tidak ada posisi terbuka</td></tr>'; return; }
+  tbody.innerHTML = entries.map(([sym, p]) => posRowFull(sym, p)).join('');
+}
+
+function posRow(sym, p, mini = false) {
+  const pnlPct  = p.pnlPct;
+  const pnlUsdt = p.pnlUsdt;
+  const sign    = pnlPct >= 0 ? '+' : '';
+  const cls     = pnlPct >= 0 ? 'green' : 'red';
+  const hasBEP  = p.hasBEP;
+  const trail   = p.trailingActive;
+  const holdH   = ((Date.now() - new Date(p.openedAt)) / 3600000).toFixed(1);
+  const strat   = stratLabel(p.strategy ?? p.signals?.trend1D ? 'mtfSmartMoney' : 'manual');
+  const status  = [hasBEP && '<span class="badge green">BEP</span>', trail && '<span class="badge blue">TRAIL</span>'].filter(Boolean).join(' ') || '<span class="badge gray">ACTIVE</span>';
+
+  return `<tr>
+    <td><b>${sym}</b><br><span style="color:var(--muted);font-size:10px">${strat}</span></td>
+    <td>${p.entryPrice}</td>
+    <td>${p.currentPrice ?? '—'}</td>
+    <td><span class="badge ${cls}">${sign}${pnlPct?.toFixed(2) ?? '—'}%</span></td>
+    <td style="color:var(--${cls})">${sign}${pnlUsdt?.toFixed(2) ?? '—'} USDT</td>
+    <td>${status}</td>
+    <td>${holdH}h</td>
+    <td><button class="btn sm danger" onclick="quickSell('${sym}')">Sell</button></td>
+  </tr>`;
+}
+
+function posRowFull(sym, p) {
+  const pnlPct  = p.pnlPct;
+  const pnlUsdt = p.pnlUsdt;
+  const sign    = pnlPct >= 0 ? '+' : '';
+  const cls     = pnlPct >= 0 ? 'green' : 'red';
+  const hasBEP  = p.hasBEP;
+  const trail   = p.trailingActive;
+  const holdH   = ((Date.now() - new Date(p.openedAt)) / 3600000).toFixed(1);
+  const openedAt = new Date(p.openedAt).toLocaleString('id-ID');
+  const status  = [hasBEP && '<span class="badge green">BEP✓</span>', trail && '<span class="badge blue">🔻TRAIL</span>'].filter(Boolean).join(' ') || '<span class="badge gray">ACTIVE</span>';
+
+  return `<tr>
+    <td><b>${sym}</b></td>
+    <td><span class="badge gray">${stratLabel(p.strategy)}</span></td>
+    <td>${p.entryPrice}</td>
+    <td>${p.currentPrice ?? '—'}</td>
+    <td><span class="badge ${cls}">${sign}${pnlPct?.toFixed(2) ?? '—'}%</span></td>
+    <td style="color:var(--${cls})">${sign}${pnlUsdt?.toFixed(2) ?? '—'}</td>
+    <td>${p.quantity}</td>
+    <td style="color:var(--red)">${p.slPrice?.toFixed(6) ?? '—'}</td>
+    <td>${status}</td>
+    <td style="font-size:10px">${openedAt}</td>
+    <td>
+      <div class="action-group">
+        <button class="btn sm danger" onclick="quickSell('${sym}')">Sell</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function renderOvPending(pending) {
+  const tbody = document.getElementById('ov-pending-body');
+  if (!pending?.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">Tidak ada kandidat pending</td></tr>'; return; }
+  tbody.innerHTML = pending.map(p => pendingRowMini(p)).join('');
+}
+
+function pendingRowMini(p) {
+  const chg    = p.change24h >= 0 ? `+${p.change24h?.toFixed(2)}%` : `${p.change24h?.toFixed(2)}%`;
+  const chgCls = p.change24h >= 0 ? 'green' : 'red';
+  const vLabel = verdictBadge(p.aiVerdict, p.aiConfidence);
+  const trig   = p.triggered ? '<span class="badge green">⚡ TRIGGERED</span>' : '<span class="badge yellow">⏳ Pre-alert</span>';
+  return `<tr>
+    <td><b>${p.symbol}</b></td>
+    <td>${p.lastPrice}</td>
+    <td><span class="badge ${chgCls}">${chg}</span></td>
+    <td>${vLabel}</td>
+    <td>${trig}</td>
+    <td>${p.minsLeft}m</td>
+    <td>
+      <div class="action-group">
+        <button class="btn sm success" onclick="approve('${p.symbol}','entry1')">E1 30%</button>
+        <button class="btn sm" onclick="approve('${p.symbol}','entry2')">E2 70%</button>
+        <button class="btn sm primary" onclick="approve('${p.symbol}','all')">All</button>
+        <button class="btn sm danger" onclick="skip('${p.symbol}')">Skip</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function renderPendingPage(pending) {
+  const container = document.getElementById('pending-cards');
+  if (!pending?.length) { container.innerHTML = '<div class="empty">Tidak ada kandidat pending</div>'; return; }
+  container.innerHTML = pending.map(p => pendingCard(p)).join('');
+}
+
+function pendingCard(p) {
+  const chg    = p.change24h >= 0 ? `+${p.change24h?.toFixed(2)}%` : `${p.change24h?.toFixed(2)}%`;
+  const chgCls = p.change24h >= 0 ? 'green' : 'red';
+  const trig   = p.triggered ? '<span class="badge green">⚡ TRIGGERED</span>' : '<span class="badge yellow">⏳ Pre-alert</span>';
+
+  // Signals
+  const sigHtml = Object.entries(p.signals || {})
+    .filter(([,v]) => v?.bullish)
+    .map(([,v]) => `<span class="badge green" style="margin:2px">✓ ${v.label}</span>`)
+    .join('');
+
+  // Zones
+  const zoneHtml = (p.zones || []).map(z =>
+    `<div style="font-family:var(--mono);font-size:11px;margin-bottom:3px">
+      <span class="badge gray">${z.entryPct}% ${z.type}</span>
+      ${z.priceBottom?.toFixed(6)} – ${z.priceTop?.toFixed(6)}
+    </div>`
+  ).join('');
+
+  // AI block
+  let aiHtml = '';
+  if (p.aiVerdict) {
+    const vmap = {BUY_NOW:'green',WAIT:'yellow',SKIP:'red'};
+    const bar  = confBar(p.aiConfidence);
+    aiHtml = `
+      <div style="margin-top:10px;padding:12px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">🤖 AI Analyst</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="badge ${vmap[p.aiVerdict]||'gray'}">${p.aiVerdict}</span>
+          <span style="font-family:var(--mono);font-size:11px">${bar} ${p.aiConfidence}%</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">${p.aiSummary || ''}</div>
+        ${p.aiAnalysis ? `<button class="btn sm" style="margin-top:8px" onclick='showAiModal(${JSON.stringify(p.symbol)})'>Detail Report →</button>` : ''}
+      </div>`;
+  }
+
+  return `
+  <div style="border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);overflow:hidden">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <b style="font-size:15px">${p.symbol}</b>
+      <span class="badge gray">${stratFullLabel(p.strategy)}</span>
+      <span class="badge ${chgCls}">${chg}</span>
+      ${trig}
+      <span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)">⏰ sisa ${p.minsLeft}m</span>
+    </div>
+    <div style="padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Entry Zones</div>
+        ${zoneHtml || '<span style="color:var(--muted);font-size:11px">—</span>'}
+        <div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--red)">SL: ${p.slPrice?.toFixed(6) ?? '—'}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Signals</div>
+        <div>${sigHtml || '<span style="color:var(--muted);font-size:11px">—</span>'}</div>
+      </div>
+    </div>
+    ${aiHtml}
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn success" onclick="approve('${p.symbol}','entry1')">▲ Entry 1 (30%)</button>
+      <button class="btn" onclick="approve('${p.symbol}','entry2')">Entry 2 (70%)</button>
+      <button class="btn primary" onclick="approve('${p.symbol}','all')">Full Position (100%)</button>
+      <button class="btn sm" onclick="triggerAnalyze('${p.symbol}')" style="margin-left:auto">🤖 Re-analyze</button>
+      <button class="btn danger" onclick="skip('${p.symbol}')">Skip</button>
+    </div>
+  </div>`;
+}
+
+function renderTradeForm(d) {
+  document.getElementById('buy-budget').textContent  = d.config?.budgetPerTrade ?? '—';
+  document.getElementById('buy-maxpos').textContent  = d.config?.maxOpenPositions ?? '—';
+  document.getElementById('buy-openpos').textContent = d.stats?.openPositions ?? '—';
+
+  const sel = document.getElementById('sell-symbol');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Pilih posisi —</option>' +
+    Object.keys(d.positions || {}).map(s => `<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+  sel.onchange = () => updateSellPreview(d.positions);
+  if (cur) updateSellPreview(d.positions);
+}
+
+function updateSellPreview(positions) {
+  const sym = document.getElementById('sell-symbol').value;
+  const p   = positions?.[sym];
+  const el  = document.getElementById('sell-preview');
+  if (!p) { el.innerHTML = 'Pilih posisi untuk lihat detail'; return; }
+  const pnl  = p.pnlPct;
+  const sign = pnl >= 0 ? '+' : '';
+  const cls  = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  el.innerHTML = `Entry: ${p.entryPrice}<br>Current: ${p.currentPrice ?? '—'}<br>PnL: <span style="color:${cls}">${sign}${pnl?.toFixed(2) ?? '—'}% (${sign}${p.pnlUsdt?.toFixed(2) ?? '—'} USDT)</span><br>Qty: ${p.quantity}`;
+}
+
+// ── AI Report renderer ─────────────────────────────────────────────────────
+function renderAIReport(analysis, container) {
+  if (!analysis) { container.innerHTML = '<div class="empty">AI analisa tidak tersedia</div>'; return; }
+  const vmap = {BUY_NOW:'green',WAIT:'yellow',SKIP:'red'};
+  const smap = {BULLISH:'green',NEUTRAL:'yellow',BEARISH:'red'};
+  const bar  = confBar(analysis.confidence);
+
+  const tmap = {
+    IMMEDIATE:'⚡ Segera',WAIT_PULLBACK:'⏳ Tunggu pullback',
+    WAIT_BREAKOUT:'📈 Tunggu breakout',NOT_RECOMMENDED:'🚫 Tidak disarankan'
+  };
+
+  container.innerHTML = `
+  <div class="ai-report">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <span class="badge ${vmap[analysis.verdict]||'gray'}" style="font-size:13px;padding:5px 12px">${analysis.verdict}</span>
+      <span style="font-family:var(--mono);font-size:13px">${bar} ${analysis.confidence}%</span>
+      <span style="font-size:12px;color:var(--muted)">${analysis.summary || ''}</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div class="ai-section">
+          <div class="ai-section-title">📈 Multi-Timeframe Narrative</div>
+          ${['1D','4H','1H'].map(tf => `<div class="ai-row"><span class="ai-key">${tf}</span><span class="ai-val">${analysis.narrative?.[tf]||'—'}</span></div>`).join('')}
+          <div class="ai-row"><span class="ai-key">Convergence</span><span class="ai-val" style="color:var(--blue)">${analysis.narrative?.convergence||'—'}</span></div>
+        </div>
+
+        <div class="ai-section">
+          <div class="ai-section-title">📍 Entry Assessment (Grade: ${analysis.entryAssessment?.quality||'—'})</div>
+          <div class="ai-row"><span class="ai-key">Timing</span><span class="ai-val">${tmap[analysis.entryAssessment?.timing]||analysis.entryAssessment?.timing||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Best Entry</span><span class="ai-val">${analysis.entryAssessment?.bestEntry||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Zone 1 (30%)</span><span class="ai-val">${analysis.entryAssessment?.zone1||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Zone 2 (70%)</span><span class="ai-val">${analysis.entryAssessment?.zone2||'—'}</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ai-section">
+          <div class="ai-section-title">⚖ Risk / Reward</div>
+          <div class="ai-row"><span class="ai-key">SL Level</span><span class="ai-val" style="color:var(--red)">${analysis.riskReward?.slLevel||'—'} (${analysis.riskReward?.riskPct||'—'})</span></div>
+          <div class="ai-row"><span class="ai-key">TP1</span><span class="ai-val" style="color:var(--green)">${analysis.riskReward?.tp1Level||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">TP2 est</span><span class="ai-val">${analysis.riskReward?.tp2EstRange||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">R:R Ratio</span><span class="ai-val"><b>${analysis.riskReward?.rrRatio||'—'}</b> — ${analysis.riskReward?.assessment||''}</span></div>
+        </div>
+
+        <div class="ai-section">
+          <div class="ai-section-title">🌐 Market Sentiment <span class="badge ${smap[analysis.sentiment?.overall]||'gray'}">${analysis.sentiment?.overall||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Summary</span><span class="ai-val">${analysis.sentiment?.summary||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Katalis +</span><span class="ai-val" style="color:var(--green)">${analysis.sentiment?.catalysts||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Risiko</span><span class="ai-val" style="color:var(--red)">${analysis.sentiment?.risks||'—'}</span></div>
+        </div>
+
+        <div class="ai-section">
+          <div class="ai-section-title">🎯 Key Levels</div>
+          <div class="ai-row"><span class="ai-key">Support</span><span class="ai-val" style="color:var(--green)">${analysis.keyLevels?.strongSupport||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Resistance</span><span class="ai-val" style="color:var(--red)">${analysis.keyLevels?.strongResistance||'—'}</span></div>
+          <div class="ai-row"><span class="ai-key">Kritis</span><span class="ai-val" style="color:var(--yellow)">${analysis.keyLevels?.criticalLevel||'—'}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:14px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)">
+      <div class="ai-section-title" style="margin-bottom:6px">💡 Rekomendasi</div>
+      <div style="font-size:13px;line-height:1.7">${analysis.recommendation||'—'}</div>
+    </div>
+  </div>`;
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+async function approve(symbol, type) {
+  if (!confirm(`Approve ${symbol} (${type})?`)) return;
+  const res = await apiPost('/api/approve', { symbol, type });
+  toast(res.ok ? `✅ ${symbol} ${type} dieksekusi` : `❌ ${res.error}`, res.ok ? 'ok' : 'err');
+  if (res.ok) setTimeout(refreshAll, 1500);
+}
+
+async function skip(symbol) {
+  if (!confirm(`Skip ${symbol}?`)) return;
+  const res = await apiPost('/api/skip', { symbol });
+  toast(res.ok ? `⏭ ${symbol} diskip` : `❌ ${res.error}`, res.ok ? 'ok' : 'err');
+  if (res.ok) setTimeout(refreshAll, 800);
+}
+
+async function quickSell(symbol) {
+  if (!confirm(`Jual ${symbol} sekarang?`)) return;
+  const res = await apiPost('/api/sell', { symbol });
+  toast(res.ok ? `✅ ${symbol} dijual` : `❌ ${res.error}`, res.ok ? 'ok' : 'err');
+  if (res.ok) setTimeout(refreshAll, 1500);
+}
+
+async function doBuy() {
+  const sym = document.getElementById('buy-symbol').value.trim().toUpperCase();
+  if (!sym) { toast('Masukkan symbol', 'err'); return; }
+  if (!confirm(`Beli ${sym}?`)) return;
+  const res = await apiPost('/api/buy', { symbol: sym });
+  toast(res.ok || res.success ? `✅ BUY ${sym} berhasil` : `❌ ${res.error || res.message}`, res.ok || res.success ? 'ok' : 'err');
+  if (res.ok || res.success) { document.getElementById('buy-symbol').value = ''; setTimeout(refreshAll, 1500); }
+}
+
+async function doSell() {
+  const sym = document.getElementById('sell-symbol').value;
+  if (!sym) { toast('Pilih posisi dulu', 'err'); return; }
+  if (!confirm(`Jual ${sym}?`)) return;
+  const res = await apiPost('/api/sell', { symbol: sym });
+  toast(res.ok ? `✅ SELL ${sym} berhasil` : `❌ ${res.error}`, res.ok ? 'ok' : 'err');
+  if (res.ok) setTimeout(refreshAll, 1500);
+}
+
+// Price preview
+document.addEventListener('DOMContentLoaded', () => {
+  let _priceTimer;
+  const inp = document.getElementById('buy-symbol');
+  if (inp) inp.addEventListener('input', () => {
+    clearTimeout(_priceTimer);
+    _priceTimer = setTimeout(async () => {
+      const sym = inp.value.trim().toUpperCase();
+      if (!sym) return;
+      try {
+        const res = await apiFetch(`/api/price/${sym}`);
+        document.getElementById('buy-price-preview').textContent =
+          res.price ? `Current price: ${res.price} USDT` : 'Symbol tidak ditemukan';
+      } catch {}
+    }, 600);
+  });
+});
+
+async function doScreen(type) {
+  const res = await apiPost('/api/screen', { type });
+  toast(`🔍 Screening ${type} dimulai di background`, '');
+  const box = document.getElementById('screen-log');
+  box.style.display = 'block';
+  box.textContent = 'Screening berjalan... pantau di Bot Logs';
+  setTimeout(() => { showPage('logs'); loadLogs(); }, 2000);
+}
+
+async function doManage() {
+  await apiPost('/api/manage', {});
+  toast('⚙ Management cycle dimulai');
+}
+
+async function doAnalyze() {
+  const sym = document.getElementById('ai-symbol').value.trim().toUpperCase();
+  if (!sym) { toast('Masukkan symbol', 'err'); return; }
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Analyzing...';
+
+  const res = document.getElementById('ai-result');
+  res.style.display = 'block';
+  document.getElementById('ai-result-title').textContent = `🤖 AI Report — ${sym}`;
+  document.getElementById('ai-result-body').innerHTML = '<div class="empty"><span class="spin"></span> Menganalisa ' + sym + '... (30-60 detik)</div>';
+
+  try {
+    const data = await apiPost('/api/analyze', { symbol: sym });
+    if (data.ok) {
+      renderAIReport(data.analysis, document.getElementById('ai-result-body'));
+    } else {
+      document.getElementById('ai-result-body').innerHTML = `<div class="empty" style="color:var(--red)">Error: ${data.error}</div>`;
+    }
+  } catch (e) {
+    document.getElementById('ai-result-body').innerHTML = `<div class="empty" style="color:var(--red)">Gagal: ${e.message}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Analyze';
+}
+
+function triggerAnalyze(symbol) {
+  document.getElementById('ai-symbol').value = symbol;
+  showPage('analyze');
+  doAnalyze();
+}
+
+async function loadHistory() {
+  const res = await apiFetch('/api/history');
+  const tbody = document.getElementById('history-body');
+  if (!res.ok || !res.trades?.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Tidak ada history</td></tr>'; return;
+  }
+  tbody.innerHTML = res.trades.map(t => {
+    const side = t.side === 'buy' ? '<span class="badge green">BUY</span>' : '<span class="badge red">SELL</span>';
+    return `<tr>
+      <td style="font-size:11px">${new Date(t.ts).toLocaleString('id-ID')}</td>
+      <td>${side}</td>
+      <td><b>${t.symbol}</b></td>
+      <td style="font-family:var(--mono)">${t.price}</td>
+      <td style="font-family:var(--mono)">${t.qty}</td>
+      <td><span class="badge gray">${t.reason || '—'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadLogs() {
+  const res = await apiFetch('/api/logs?n=200');
+  const box = document.getElementById('log-box');
+  if (!res.ok) { box.textContent = 'Gagal memuat log'; return; }
+  box.innerHTML = res.logs.map(line => {
+    const cls = line.includes('ERROR') || line.includes('_error') ? 'log-err'
+      : line.includes('WARN') ? 'log-warn'
+      : line.includes('✅') || line.includes('BUY') || line.includes('SELL') ? 'log-ok'
+      : line.includes('AI') || line.includes('ai_') ? 'log-ai'
+      : '';
+    return `<span class="${cls}">${escHtml(line)}</span>`;
+  }).join('\n');
+  box.scrollTop = box.scrollHeight;
+}
+
+function toggleAutoLog() {
+  _autoLog = !_autoLog;
+  document.getElementById('autoLogBtn').textContent = `Auto: ${_autoLog ? 'ON' : 'OFF'}`;
+  if (_autoLog) { _logTimer = setInterval(loadLogs, 5000); loadLogs(); }
+  else { clearInterval(_logTimer); }
+}
+
+// Auto-log when logs page visible
+const _origShowPage = window.showPage;
+
+async function loadConfig() {
+  const res = await apiFetch('/api/config');
+  if (!res.ok) return;
+  _fullConfig = res.config;
+  const cfg   = res.config;
+  const mgmt  = cfg.management || {};
+  const trade = cfg.trading || {};
+
+  document.getElementById('config-grid').innerHTML = `
+    <div class="field"><label>Budget / Trade (USDT)</label><input id="cfg-budget" type="number" value="${trade.budgetPerTrade||30}"></div>
+    <div class="field"><label>Max Open Positions</label><input id="cfg-maxpos" type="number" value="${trade.maxOpenPositions||3}"></div>
+    <div class="field"><label>Take Profit %</label><input id="cfg-tp" type="number" step="0.1" value="${mgmt.takeProfitPct||8}"></div>
+    <div class="field"><label>Stop Loss %</label><input id="cfg-sl" type="number" step="0.1" value="${Math.abs(mgmt.stopLossPct||4)}"></div>
+    <div class="field"><label>Trailing Callback %</label><input id="cfg-trail" type="number" step="0.1" value="${mgmt.trailingStop?.trailPct||1.5}"></div>
+    <div class="field"><label>Approval Timeout (menit)</label><input id="cfg-timeout" type="number" value="${trade.approvalTimeoutMin||60}"></div>
+    <div class="field"><label>Min Volume 24h (USD)</label><input id="cfg-vol" type="number" value="${cfg.screening?.mtf?.minVolume24h||50000000}"></div>
+    <div class="field"><label>Max Candidates / Screen</label><input id="cfg-maxcand" type="number" value="${cfg.screening?.mtf?.topCandidatesLimit||3}"></div>
+  `;
+
+  // Whitelist
+  const wl = (cfg.whitelist || []).join('\n');
+  document.getElementById('whitelist-editor').value = wl;
+}
+
+async function saveConfig() {
+  if (!_fullConfig) { toast('Load config dulu', 'err'); return; }
+  const updates = {
+    trading: {
+      budgetPerTrade:      parseFloat(document.getElementById('cfg-budget').value),
+      maxOpenPositions:    parseInt(document.getElementById('cfg-maxpos').value),
+      approvalTimeoutMin:  parseInt(document.getElementById('cfg-timeout').value),
+    },
+    management: {
+      takeProfitPct: parseFloat(document.getElementById('cfg-tp').value),
+      stopLossPct:   -Math.abs(parseFloat(document.getElementById('cfg-sl').value)),
+      trailingStop:  { trailPct: parseFloat(document.getElementById('cfg-trail').value) },
+    },
+    screening: {
+      mtf: {
+        minVolume24h:       parseFloat(document.getElementById('cfg-vol').value),
+        topCandidatesLimit: parseInt(document.getElementById('cfg-maxcand').value),
+      }
+    }
+  };
+  const res = await apiPost('/api/config', updates);
+  toast(res.ok ? '✅ Config tersimpan' : `❌ ${res.error}`, res.ok ? 'ok' : 'err');
+}
+
+async function saveWhitelist() {
+  const lines = document.getElementById('whitelist-editor').value
+    .split('\n').map(l => l.trim().toUpperCase()).filter(Boolean);
+  const res = await apiPost('/api/config', { whitelist: lines });
+  toast(res.ok ? `✅ Whitelist ${lines.length} koin tersimpan` : `❌ ${res.error}`, res.ok ? 'ok' : 'err');
+}
+
+// AI Modal
+function showAiModal(symbol) {
+  const pending = _data?.pending?.find(p => p.symbol === symbol);
+  if (!pending?.aiAnalysis) return;
+  document.getElementById('aiModalTitle').textContent = `🤖 AI Report — ${symbol}`;
+  renderAIReport(pending.aiAnalysis, document.getElementById('aiModalBody'));
+  document.getElementById('aiModal').classList.add('open');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.addEventListener('click', e => { if (e.target.classList.contains('modal-bg')) closeModal(e.target.id); });
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name)?.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick')?.includes(name)) n.classList.add('active');
+  });
+  if (name === 'history') loadHistory();
+  if (name === 'logs')    { loadLogs(); if (_autoLog && !_logTimer) _logTimer = setInterval(loadLogs, 5000); }
+  if (name === 'config')  loadConfig();
+  if (name !== 'logs') { clearInterval(_logTimer); _logTimer = null; }
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toastArea').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function verdictBadge(verdict, conf) {
+  if (!verdict) return '<span class="badge gray">—</span>';
+  const map = {BUY_NOW:'green',WAIT:'yellow',SKIP:'red'};
+  return `<span class="badge ${map[verdict]||'gray'}">${verdict} ${conf ? conf+'%' : ''}</span>`;
+}
+
+function confBar(pct) {
+  const f = Math.round((pct / 100) * 10);
+  return '█'.repeat(f) + '░'.repeat(10 - f);
+}
+
+function stratLabel(s) {
+  return {mtfSmartMoney:'MTF',trendFollowing:'TREND',reversal:'REV',dailyGainer:'GAINER',manual:'MANUAL'}[s] || s || '—';
+}
+
+function stratFullLabel(s) {
+  return {mtfSmartMoney:'🧠 MTF Smart Money',trendFollowing:'📈 Trend Following',reversal:'🔄 Reversal Hunter',dailyGainer:'🚀 Daily Gainer',manual:'🖐 Manual'}[s] || s || '—';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+{
+  "trading": {
+    "quoteAsset": "USDT",
+    "budgetPerTrade": 150,
+    "maxOpenPositions": 5,
+    "gasReserve": 3,
+    "approvalTimeoutMin": 60,
+    "manualApproval": true,
+    "splitEntry": {
+      "enabled": true,
+      "portion1Pct": 55,
+      "portion2Pct": 45
+    }
+  },
+  "whitelist": [],
+  "screening": {
+    "minVolume24h": 2000000,
+    "mtf": {
+      "minVolume24h": 2000000,
+      "topCandidatesLimit": 3,
+      "checkLimit": 150,
+      "maxEMA21DistPct": 8,
+      "orderBlock": {
+        "impulseBodyMultiplier": 1.5,
+        "lookbackCandles": 5,
+        "maxAgeCandles": 30
+      },
+      "structure": {
+        "swingLookback": 3,
+        "bosLookback": 20
+      },
+      "trigger1H": {
+        "pinbarLowerWickRatio": 2.0,
+        "pinbarUpperWickRatio": 0.5,
+        "engulfingEnabled": true,
+        "choChEnabled": true
+      }
+    },
+    "utbot": {
+      "enabled": true,
+      "keyValue": 2,
+      "atrPeriod": 10,
+      "timeframe": "1h",
+      "checkIntervalMin": 60,
+      "minVolume24h": 2000000,
+      "filter1D": true,
+      "maxSignalsPerRun": 5
+    }
+  },
+  "management": {
+    "stopLossPct": -4,
+    "slBuffer": 0.005,
+    "minRiskReward": 2,
+    "tp1": {
+      "closePct": 50,
+      "action": "move_sl_to_bep"
+    },
+    "trailingStop": {
+      "enabled": true,
+      "activateAfterTP1": true,
+      "activateAtProfitPct": 4,
+      "trailPct": 2
+    },
+    "maxHoldHours": 72
+  },
+  "schedule": {
+    "mtfCron": "30 0 * * *",
+    "mtfCron2": "0 6 * * *",
+    "mtfCron3": "0 12 * * *",
+    "managementIntervalMin": 10,
+    "preAlertRecheckMin": 60
+  },
+  "blacklist": [
+    "USDCUSDT", "BUSDUSDT", "TUSDUSDT", "USDTUSDT", "DAIUSDT",
+    "FRAXUSDT", "USDPUSDT", "GUSDUSDT", "LUSDUSDT", "MUSDUSDT",
+    "CUSDUSDT", "EUSDUSDT", "USDGOUSDT", "USDDUSDT", "USDEUSDT",
+    "USDXUSDT", "SUSDUSDT", "USDSUSDT", "AUSDUSDT", "RUSDUSDT",
+    "DUSDUSDT", "USDKUSDT", "PYUSDUSDT", "FDUSDUSDT", "AEUSDUSDT",
+    "USDBUSDT", "USDNUSDT", "EURCUSDT", "EURSUSDT", "EURTUSDT",
+    "GBPTUSDT", "FRXETHUSDT", "CBETHUSDT", "STETHUSDT", "WSTETHUSDT",
+    "RETHUSDT", "SWETHUSDT", "BETHUSDT", "ANKRETHUSDT", "WBTCUSDT",
+    "BTCBUSDT", "HBTCUSDT", "RENBTCUSDT"
+  ]
+}

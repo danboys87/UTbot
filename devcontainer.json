@@ -1,0 +1,25 @@
+{
+  "name": "Bitget Trading Bot",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Trading Dashboard",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "PKief.material-icon-theme"
+      ],
+      "settings": {
+        "editor.formatOnSave": false,
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

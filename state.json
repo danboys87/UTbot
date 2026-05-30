@@ -1,0 +1,292 @@
+{
+  "positions": {
+    "BGBUSDT": {
+      "symbol": "BGBUSDT",
+      "entryPrice": 2.0181,
+      "quantity": 74.32,
+      "orderId": "dryrun_1779930056456",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-28T01:00:56.456Z",
+      "peakPrice": 2.0181,
+      "trailingActive": false,
+      "partialSells": []
+    },
+    "VIRTUALUSDT": {
+      "symbol": "VIRTUALUSDT",
+      "entryPrice": 0.7166,
+      "quantity": 209.32,
+      "orderId": "dryrun_1779960170550",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-28T09:22:50.550Z",
+      "peakPrice": 0.7166,
+      "trailingActive": false,
+      "partialSells": []
+    },
+    "BCHUSDT": {
+      "symbol": "BCHUSDT",
+      "entryPrice": 304.4,
+      "quantity": 0.4927,
+      "orderId": "dryrun_1779967675944",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-28T11:27:55.944Z",
+      "peakPrice": 304.4,
+      "trailingActive": false,
+      "partialSells": []
+    },
+    "WLDUSDT": {
+      "symbol": "WLDUSDT",
+      "entryPrice": 0.299,
+      "quantity": 501.67,
+      "orderId": "dryrun_1780108760066",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-30T02:39:20.066Z",
+      "peakPrice": 0.299,
+      "trailingActive": false,
+      "partialSells": []
+    }
+  },
+  "closed": [
+    {
+      "symbol": "DOGEUSDT",
+      "entryPrice": 0.1003,
+      "quantity": 299.1,
+      "orderId": "dryrun_1779546587427",
+      "budget": 30,
+      "score": 60.203720832415,
+      "signals": {
+        "trend1D": {
+          "bullish": true,
+          "label": "1D BoS | EMA21 @ 0.0932"
+        },
+        "demandZone": {
+          "bullish": true,
+          "label": "EMA21 4H @ 0.109257 | Swing Low @ 0.105650"
+        },
+        "trigger1H": {
+          "bullish": true,
+          "label": "Pinbar di Swing Low @ 0.105650",
+          "patterns": [
+            "Pinbar"
+          ]
+        },
+        "orderBlocks": {
+          "bullish": false,
+          "label": "0 OB unmitigated",
+          "count": 0
+        }
+      },
+      "openedAt": "2026-05-23T14:29:47.427Z",
+      "peakPrice": 0.1003,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 0.1032,
+      "closedAt": "2026-05-24T11:15:37.158Z",
+      "reason": "manual_sell",
+      "pnlUsdt": 0.86739,
+      "pnlPct": 2.891326021934197
+    },
+    {
+      "symbol": "BGBUSDT",
+      "entryPrice": 2.001,
+      "quantity": 74.96,
+      "orderId": "dryrun_1779778929013",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-26T07:02:09.013Z",
+      "peakPrice": 2.001,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 2.0226,
+      "closedAt": "2026-05-26T14:21:50.391Z",
+      "reason": "manual_sell",
+      "pnlUsdt": 1.6191360000000212,
+      "pnlPct": 1.079460269865082
+    },
+    {
+      "symbol": "TAOUSDT",
+      "entryPrice": 289.9,
+      "quantity": 0.5174,
+      "orderId": "dryrun_1779805943575",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-26T14:32:23.576Z",
+      "peakPrice": 289.9,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 277.7,
+      "closedAt": "2026-05-27T02:20:01.553Z",
+      "reason": "stop_loss",
+      "pnlUsdt": -6.312279999999994,
+      "pnlPct": -4.20834770610555
+    },
+    {
+      "symbol": "LINKUSDT",
+      "entryPrice": 9.654,
+      "quantity": 15.53,
+      "orderId": "dryrun_1779805908912",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-26T14:31:48.912Z",
+      "peakPrice": 9.654,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 9.137,
+      "closedAt": "2026-05-27T23:54:12.945Z",
+      "reason": "stop_loss",
+      "pnlUsdt": -8.02900999999999,
+      "pnlPct": -5.355293142738756
+    },
+    {
+      "symbol": "ADAUSDT",
+      "entryPrice": 0.2465,
+      "quantity": 608.51,
+      "orderId": "dryrun_1779805452636",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-26T14:24:12.636Z",
+      "peakPrice": 0.2465,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 0.2348,
+      "closedAt": "2026-05-28T03:20:00.447Z",
+      "reason": "stop_loss",
+      "pnlUsdt": -7.119566999999993,
+      "pnlPct": -4.74645030425963
+    },
+    {
+      "symbol": "RIVERUSDT",
+      "entryPrice": 7.0918,
+      "quantity": 21.15,
+      "orderId": "dryrun_1779928461216",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-28T00:34:21.217Z",
+      "peakPrice": 7.0918,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 6.8021,
+      "closedAt": "2026-05-28T03:25:46.980Z",
+      "reason": "stop_loss",
+      "pnlUsdt": -6.127154999999997,
+      "pnlPct": -4.084999576976224
+    },
+    {
+      "symbol": "SEIUSDT",
+      "entryPrice": 0.0662,
+      "quantity": 1132.93,
+      "orderId": "dryrun_1779850434035",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-27T02:53:54.035Z",
+      "peakPrice": 0.069,
+      "trailingActive": true,
+      "partialSells": [
+        {
+          "sellQty": 1132.93,
+          "price": 0.0687,
+          "reason": "tp1_partial",
+          "at": "2026-05-28T08:20:00.295Z"
+        }
+      ],
+      "exitPrice": 0.0676,
+      "closedAt": "2026-05-28T09:34:33.190Z",
+      "reason": "trailing_stop",
+      "pnlUsdt": 1.5861019999999983,
+      "pnlPct": 2.1148036253776414
+    },
+    {
+      "symbol": "XLMUSDT",
+      "entryPrice": 0.1699,
+      "quantity": 441.435,
+      "orderId": "dryrun_1779928492623",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-28T00:34:52.623Z",
+      "peakPrice": 0.2048,
+      "trailingActive": true,
+      "partialSells": [
+        {
+          "sellQty": 441.435,
+          "price": 0.1767,
+          "reason": "tp1_partial",
+          "at": "2026-05-28T11:30:01.143Z"
+        }
+      ],
+      "exitPrice": 0.202,
+      "closedAt": "2026-05-28T23:41:06.769Z",
+      "reason": "manual_sell",
+      "pnlUsdt": 14.170063500000008,
+      "pnlPct": 18.893466745144213
+    },
+    {
+      "symbol": "WLDUSDT",
+      "entryPrice": 0.3,
+      "quantity": 500,
+      "orderId": "dryrun_1780036563165",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-29T06:36:03.166Z",
+      "peakPrice": 0.3127,
+      "trailingActive": true,
+      "partialSells": [],
+      "exitPrice": 0.2959,
+      "closedAt": "2026-05-29T11:43:47.120Z",
+      "reason": "stop_loss",
+      "pnlUsdt": -2.0499999999999963,
+      "pnlPct": -1.3666666666666643
+    },
+    {
+      "symbol": "UMXMUSDT",
+      "entryPrice": 1.67253,
+      "quantity": 89.68,
+      "orderId": "dryrun_1780011200318",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-28T23:33:20.318Z",
+      "peakPrice": 1.67253,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 1.691,
+      "closedAt": "2026-05-29T13:57:20.069Z",
+      "reason": "manual_sell",
+      "pnlUsdt": 1.656389599999999,
+      "pnlPct": 1.1043150197604819
+    },
+    {
+      "symbol": "XLMUSDT",
+      "entryPrice": 0.2063,
+      "quantity": 727.09,
+      "orderId": "dryrun_1780063094100",
+      "budget": 150,
+      "score": 0,
+      "signals": {},
+      "openedAt": "2026-05-29T13:58:14.100Z",
+      "peakPrice": 0.2063,
+      "trailingActive": false,
+      "partialSells": [],
+      "exitPrice": 0.2063,
+      "closedAt": "2026-05-29T14:03:31.027Z",
+      "reason": "manual_sell",
+      "pnlUsdt": 0,
+      "pnlPct": 0
+    }
+  ],
+  "totalPnlUsdt": -9.738930899999945
+}

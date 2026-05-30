@@ -2,6 +2,8 @@
  * Telegram Notifications — v3.1 AI Analyst
  */
 import { log } from './logger.js';
+import { getAIStatus } from './aiAnalyst.js';
+import { config } from './config.js';
 
 const getToken  = () => process.env.TELEGRAM_BOT_TOKEN;
 const getChatId = () => process.env.TELEGRAM_CHAT_ID;
@@ -56,8 +58,10 @@ export async function notifyBuy({ symbol, price, quantity, budget, score, signal
     : entryPortion === 'all'? '📌 Full Entry — 100% posisi'
     : '';
 
+  // SL selalu di bawah entry → persentase negatif
+  const slPct     = slPrice ? ((slPrice - price) / price * 100) : null;
   const slDisplay = slPrice
-    ? `${slPrice.toFixed(6)} (${(((slPrice - price) / price) * 100).toFixed(2)}%)`
+    ? `${slPrice.toFixed(6)} (${slPct > 0 ? '⚠️ SL di atas entry! Cek config' : slPct.toFixed(2) + '%'})`
     : '-';
 
   const signalLines = [];
@@ -165,6 +169,22 @@ export async function notifyAIAnalysis(symbol, analysis) {
   await sendLong(msg);
 }
 
+// Sanitize teks dari AI — hapus karakter yang bisa break HTML Telegram
+function sanitize(text) {
+  if (!text) return '—';
+  return String(text)
+    .replace(/&/g, '&amp;')    // & harus di-escape
+    .replace(/</g, '&lt;')     // < yang bukan tag HTML
+    .replace(/>/g, '&gt;')     // > yang bukan tag HTML
+    .replace(/‑/g, '-')   // non-breaking hyphen
+    .replace(/–/g, '-')   // en dash
+    .replace(/—/g, '-')   // em dash
+    .replace(/’/g, "'")   // right single quotation
+    .replace(/“/g, '"')   // left double quotation
+    .replace(/”/g, '"')   // right double quotation
+    .trim();
+}
+
 export function formatAIAnalysis(symbol, analysis) {
   if (!analysis) return `⚠️ AI analisa untuk <b>${symbol}</b> tidak tersedia.`;
 
@@ -185,39 +205,39 @@ export function formatAIAnalysis(symbol, analysis) {
     `📊 Confidence: ${bar} ${analysis.confidence}%`,
     ``,
     `📝 <b>Summary</b>`,
-    analysis.summary ?? '-',
+    sanitize(analysis.summary),
     ``,
     `📈 <b>Multi-Timeframe Narrative</b>`,
-    `• 1D : ${analysis.narrative?.['1D'] ?? '-'}`,
-    `• 4H : ${analysis.narrative?.['4H'] ?? '-'}`,
-    `• 1H : ${analysis.narrative?.['1H'] ?? '-'}`,
-    `• ⚡  ${analysis.narrative?.convergence ?? '-'}`,
+    `• 1D : ${sanitize(analysis.narrative?.['1D'])}`,
+    `• 4H : ${sanitize(analysis.narrative?.['4H'])}`,
+    `• 1H : ${sanitize(analysis.narrative?.['1H'])}`,
+    `• ⚡  ${sanitize(analysis.narrative?.convergence)}`,
     ``,
     `📍 <b>Entry Assessment</b> (Grade: ${analysis.entryAssessment?.quality ?? '-'})`,
     `• Timing    : ${timing}`,
-    `• Best Entry: ${analysis.entryAssessment?.bestEntry ?? '-'}`,
-    `• Zone 1 30%: ${analysis.entryAssessment?.zone1 ?? '-'}`,
-    `• Zone 2 70%: ${analysis.entryAssessment?.zone2 ?? '-'}`,
+    `• Best Entry: ${sanitize(analysis.entryAssessment?.bestEntry)}`,
+    `• Zone 1 30%: ${sanitize(analysis.entryAssessment?.zone1)}`,
+    `• Zone 2 70%: ${sanitize(analysis.entryAssessment?.zone2)}`,
     ``,
     `⚖️ <b>Risk / Reward</b>`,
-    `• SL       : ${analysis.riskReward?.slLevel ?? '-'} (risk ${analysis.riskReward?.riskPct ?? '-'})`,
-    `• TP1      : ${analysis.riskReward?.tp1Level ?? '-'}`,
-    `• TP2 est  : ${analysis.riskReward?.tp2EstRange ?? '-'}`,
-    `• R:R      : ${analysis.riskReward?.rrRatio ?? '-'} — ${analysis.riskReward?.assessment ?? '-'}`,
+    `• SL       : ${sanitize(analysis.riskReward?.slLevel)} (risk ${sanitize(analysis.riskReward?.riskPct)})`,
+    `• TP1      : ${sanitize(analysis.riskReward?.tp1Level)}`,
+    `• TP2 est  : ${sanitize(analysis.riskReward?.tp2EstRange)}`,
+    `• R:R      : ${sanitize(analysis.riskReward?.rrRatio)} — ${sanitize(analysis.riskReward?.assessment)}`,
     ``,
     `${sEmoji} <b>Market Sentiment</b>`,
     `• Overall  : ${analysis.sentiment?.overall ?? '-'}`,
-    `• Situasi  : ${analysis.sentiment?.summary ?? '-'}`,
-    `• Katalis+ : ${analysis.sentiment?.catalysts ?? '-'}`,
-    `• Risiko   : ${analysis.sentiment?.risks ?? '-'}`,
+    `• Situasi  : ${sanitize(analysis.sentiment?.summary)}`,
+    `• Katalis+ : ${sanitize(analysis.sentiment?.catalysts)}`,
+    `• Risiko   : ${sanitize(analysis.sentiment?.risks)}`,
     ``,
     `🎯 <b>Key Levels</b>`,
-    `• Support  : ${analysis.keyLevels?.strongSupport ?? '-'}`,
-    `• Resist   : ${analysis.keyLevels?.strongResistance ?? '-'}`,
-    `• Kritis   : ${analysis.keyLevels?.criticalLevel ?? '-'}`,
+    `• Support  : ${sanitize(analysis.keyLevels?.strongSupport)}`,
+    `• Resist   : ${sanitize(analysis.keyLevels?.strongResistance)}`,
+    `• Kritis   : ${sanitize(analysis.keyLevels?.criticalLevel)}`,
     ``,
     `💡 <b>Rekomendasi</b>`,
-    analysis.recommendation ?? '-',
+    sanitize(analysis.recommendation),
   ];
 
   if (analysis.verdict === 'BUY_NOW') {
@@ -271,12 +291,21 @@ export async function notifyScreening({ found, total, symbols, strategy }) {
 
 export async function notifyError(message) { await send(`⚠️ <b>Error</b>\n${message}`); }
 
+
+function getAIInfo() {
+  try {
+    const s = getAIStatus();
+    if (!s.enabled) return '⚠ tidak aktif (set GEMINI_API_KEY atau ANTHROPIC_API_KEY)';
+    return `✅ ${s.provider} / ${s.model}`;
+  } catch { return '—'; }
+}
+
 export async function notifyStartup(dryRun) {
   await send(
     `🚀 <b>Bot v3.1 — MTF Smart Money + AI Analyst</b>\n` +
     `Mode: ${dryRun ? '🧪 DRY RUN' : '💸 LIVE TRADING'}\n` +
     `📅 MTF Screening : 07:00 WIB\n` +
-    `🤖 AI Analyst    : ${process.env.ANTHROPIC_API_KEY ? 'aktif' : '⚠️ tidak aktif (set ANTHROPIC_API_KEY)'}\n` +
+    `🤖 AI Analyst    : ${getAIInfo()}\n` +
     `⚙️  Management    : setiap 10 menit\n` +
     `Time: ${new Date().toLocaleString('id-ID')}`
   );
@@ -285,6 +314,82 @@ export async function notifyStartup(dryRun) {
 export async function notifyStats({ openPositions, closedCount, totalPnlUsdt }) {
   const sign = totalPnlUsdt >= 0 ? '+' : '';
   await send(`📊 <b>Status Bot</b>\n📂 Posisi terbuka: ${openPositions}\n✅ Total closed: ${closedCount}\n💰 Total PnL: ${sign}${totalPnlUsdt?.toFixed(2)} USDT`);
+}
+
+
+// ── Pre-Alert Notification (1H belum trigger) ─────────────────────────────
+export async function notifyPreAlert(candidates) {
+  if (!candidates?.length) return;
+  const lines = [
+    `⏳ <b>Pre-Alert — Pantau Koin Ini</b>`,
+    ``,
+    `Lolos 1D + 4H tapi 1H belum konfirmasi.`,
+    `Set alert TradingView, approve saat harga mendekati zone.`,
+    ``,
+  ];
+  for (const c of candidates) {
+    const chg  = c.change24h >= 0 ? `+${c.change24h?.toFixed(2)}%` : `${c.change24h?.toFixed(2)}%`;
+    const z1   = c.entryZone1;
+    const z2   = c.entryZone2;
+    lines.push(`📌 <b>${c.symbol}</b> (${chg}) | Vol $${(c.vol24h/1e6).toFixed(1)}M`);
+    lines.push(`   Price skrg  : ${c.lastPrice}`);
+    if (z1) lines.push(`   EMA21 zone : ${z1.priceBottom?.toFixed(4)} – ${z1.priceTop?.toFixed(4)}`);
+    if (z2) lines.push(`   Demand zone: ${z2.priceBottom?.toFixed(4)} – ${z2.priceTop?.toFixed(4)}`);
+    if (c.slPrice) lines.push(`   SL ref     : ${c.slPrice?.toFixed(4)}`);
+    lines.push(`   /analyze ${c.symbol} — minta AI analisa manual`);
+    lines.push(``);
+  }
+  await sendLong(lines.join('\n'));
+}
+
+// ── UT Bot Alert Notification ─────────────────────────────────────────────────
+export async function notifyUTBot(signals) {
+  if (!signals?.length) return;
+
+  const buySignals  = signals.filter(s => s.signal === 'BUY');
+  const sellSignals = signals.filter(s => s.signal === 'SELL');
+
+  const fmt = (s) => {
+    const chg   = s.change24h >= 0 ? `+${s.change24h?.toFixed(2)}%` : `${s.change24h?.toFixed(2)}%`;
+    const pos   = s.hasPosition ? ' <b>[POSISI OPEN]</b>' : '';
+    const vol   = s.vol24h ? ` | Vol $${(s.vol24h/1e6).toFixed(1)}M` : '';
+    const emoji = s.signal === 'BUY' ? '🟢' : '🔴';
+    return [
+      `${emoji} <b>${s.symbol}</b>${pos} (${chg}${vol})`,
+      `   Price : ${s.close}`,
+      `   Trail : ${s.trailingStop?.toFixed(6)}`,
+      `   ATR   : ${s.atr?.toFixed(6)}`,
+      s.signal === 'BUY'
+        ? `   /buy ${s.symbol} — beli manual`
+        : `   /sell ${s.symbol} — jual posisi`,
+    ].join('\n');
+  };
+
+  if (buySignals.length > 0) {
+    const lines = [
+      `📡 <b>UT Bot Alert — BUY Signal (1H)</b>`,
+      `Key: ${config?.screening?.utbot?.keyValue ?? 1} | ATR: ${config?.screening?.utbot?.atrPeriod ?? 10}`,
+      ``,
+      ...buySignals.map(fmt),
+      ``,
+      `<i>Filter 1D aktif — sinyal sudah dikonfirmasi trend harian</i>`,
+    ];
+    await sendLong(lines.join('\n'));
+  }
+
+  // SELL signal disembunyikan — management cycle yang handle exit
+  // Uncomment blok di bawah kalau mau notif SELL dimunculkan lagi:
+  /*
+  if (sellSignals.length > 0) {
+    const lines = [
+      `📡 <b>UT Bot Alert — SELL Signal (1H)</b>`,
+      `Key: ${config?.screening?.utbot?.keyValue ?? 1} | ATR: ${config?.screening?.utbot?.atrPeriod ?? 10}`,
+      ``,
+      ...sellSignals.map(fmt),
+    ];
+    await sendLong(lines.join('\n'));
+  }
+  */
 }
 
 // Legacy compat
