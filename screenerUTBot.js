@@ -7,7 +7,7 @@
  *  3. Deteksi BUY signal: close cross ke atas trailing stop
  *  4. Deteksi SELL signal: close cross ke bawah trailing stop
  *  5. Filter tambahan: hanya BUY kalau 1D trend bullish (price > EMA21 1D)
- *  6. Kirim notif Telegram — tanpa auto-execute
+ *  6. Kirim notif Telegram → masuk Approval Queue (Opsi B)
  *
  * Setting di user-config.json:
  *  "utbot": {
@@ -17,8 +17,8 @@
  *    "timeframe": "1h",
  *    "checkIntervalMin": 60,
  *    "minVolume24h": 2000000,
- *    "filter1D": true,        // hanya BUY kalau 1D bullish
- *    "maxSignalsPerRun": 5    // max sinyal per run agar tidak spam
+ *    "filter1D": true,
+ *    "maxSignalsPerRun": 5
  *  }
  */
 
@@ -31,7 +31,6 @@ import { hasPosition }              from './state.js';
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // Track sinyal yang sudah dikirim agar tidak spam notif berulang
-// key: symbol_signal_candleTimestamp → sudah notif
 const _sentSignals = new Map();
 
 function signalKey(symbol, signal, timestamp) {
@@ -39,12 +38,12 @@ function signalKey(symbol, signal, timestamp) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cek 1D trend — price > EMA21 1D (filter opsional)
+// Cek 1D trend — price > EMA21 1D
 // ─────────────────────────────────────────────────────────────────────────────
 async function is1DBullish(symbol) {
   try {
     const raw1D = await getCandles(symbol, '1day', 62);
-    if (!Array.isArray(raw1D) || raw1D.length < 25) return true; // skip filter jika data kurang
+    if (!Array.isArray(raw1D) || raw1D.length < 25) return true;
 
     const now         = Date.now();
     const periodMs    = 86400000;
@@ -59,22 +58,20 @@ async function is1DBullish(symbol) {
     const lastClose = closes[closes.length - 1];
     return ema21 ? lastClose > ema21 : true;
   } catch {
-    return true; // gagal fetch → tidak filter
+    return true;
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scan satu symbol
+// Scan satu symbol — return result + data untuk approval queue
 // ─────────────────────────────────────────────────────────────────────────────
 async function scanSymbol(symbol, cfg) {
   const { keyValue, atrPeriod, filter1D } = cfg;
 
   try {
-    // Fetch 1H candles — butuh minimal atrPeriod + 20 candle
     const raw1H = await getCandles(symbol, '1h', Math.max(atrPeriod * 3 + 20, 60));
     if (!Array.isArray(raw1H) || raw1H.length < atrPeriod + 10) return null;
 
-    // Filter candle live, sort oldest first
     const now         = Date.now();
     const periodMs    = 3600000;
     const periodStart = now - (now % periodMs);
@@ -92,7 +89,7 @@ async function scanSymbol(symbol, cfg) {
     const result = calcUTBot(highs, lows, closes, keyValue, atrPeriod);
     if (!result || !result.signal) return null;
 
-    // Cek duplikat sinyal (candle yang sama sudah pernah dikirim)
+    // Cek duplikat sinyal
     const key = signalKey(symbol, result.signal, lastTs);
     if (_sentSignals.has(key)) return null;
 
@@ -114,6 +111,23 @@ async function scanSymbol(symbol, cfg) {
       if (ts < cutoff) _sentSignals.delete(k);
     }
 
+    // ── Hitung SL & zone entry untuk approval queue ───────────────────────
+    // SL: di bawah trailing stop saat ini dengan buffer 0.3%
+    const slBuffer = config.management?.slBuffer ?? 0.005;
+    const slPrice  = result.trailingStop * (1 - slBuffer);
+
+    // Ambil low 20 candle terakhir sebagai referensi support
+    const low20 = Math.min(...lows.slice(-20));
+
+    // Zone entry: sekitar harga close sekarang (UT Bot entry di breakout trailing stop)
+    const entryZone = {
+      type:        'UTBot',
+      entryPct:    100,
+      priceTop:    result.close * 1.005,
+      priceBottom: result.trailingStop,
+      label:       `UT Bot zone ${result.trailingStop.toFixed(6)} - ${(result.close * 1.005).toFixed(6)}`,
+    };
+
     return {
       symbol,
       signal:       result.signal,
@@ -122,6 +136,33 @@ async function scanSymbol(symbol, cfg) {
       atr:          result.atr,
       nLoss:        result.nLoss,
       candleTs:     lastTs,
+
+      // Data tambahan untuk approval queue
+      lastPrice:    result.close,
+      slPrice,
+      zones:        [entryZone],
+      strategy:     'utbot',
+      triggered:    true,   // UTBot signal = langsung triggered
+      signals: {
+        utbotSignal: {
+          bullish: result.signal === 'BUY',
+          label:   `UT Bot BUY — close ${result.close} cross above trailing stop ${result.trailingStop.toFixed(6)}`,
+        },
+        atrTrailing: {
+          bullish: true,
+          label:   `ATR=${result.atr.toFixed(6)} | nLoss=${result.nLoss.toFixed(6)} | keyValue=${keyValue}`,
+        },
+        trend1D: {
+          bullish: true,
+          label:   `1D trend bullish (price > EMA21 1D)`,
+        },
+        support: {
+          bullish: true,
+          label:   `Low20 1H = ${low20.toFixed(6)} | SL ref = ${result.trailingStop.toFixed(6)}`,
+        },
+      },
+      matchCount: 3,
+      score: 50,   // base score untuk UTBot
     };
 
   } catch (err) {
@@ -150,7 +191,6 @@ export async function runUTBotScreener(tickers) {
 
   log('utbot', `══ UT Bot Alert Screener (1H | key=${keyValue} atr=${atrPeriod}) ══`);
 
-  // Filter tickers
   const filtered = (tickers || [])
     .filter(t => {
       if (!t.symbol.endsWith(quoteAsset))    return false;
@@ -185,7 +225,6 @@ export async function runUTBotScreener(tickers) {
       }
     }
 
-    // Throttle agar tidak kena rate limit
     if (i % 10 === 9) await sleep(500);
     else await sleep(150);
   }
