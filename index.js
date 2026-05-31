@@ -1,12 +1,11 @@
 /**
- * Bitget Spot Trading Bot v3.0 — MTF Smart Money
+ * Bitget Spot Trading Bot v3.1 — MTF Smart Money
  * Entry point utama
  *
- * Perubahan dari v2.0:
- *  - Screener utama: runMTFScreening (1D + 4H + 1H + Order Block)
- *  - Approval: 3 perintah → /approve (entry1 30%), /approve2 (entry2 70%), /approveall
- *  - Manager: TP1 50% + BEP, lalu trailing 1.5%
- *  - Screener lama (gainer, reversal, trend) tetap tersedia sebagai fallback
+ * Fix v3.1.1:
+ *  - Cron */60 * * * * tidak valid → pakai intervalToCron() helper
+ *  - Pisah flag _utbotBusy agar UTBot tidak terblokir _screenBusy MTF
+ *  - UTBot BUY signal → approval queue (Opsi B)
  */
 
 import { createRequire } from 'module';
@@ -42,17 +41,39 @@ import {
 const isDryRun = process.env.DRY_RUN === 'true';
 const args     = process.argv.slice(2);
 
-let _screenBusy = false;
-let _manageBusy = false;
+// ── Busy flags — dipisah agar tidak saling blokir ────────────────────────────
+let _screenBusy = false;   // MTF, trend, reversal, gainer
+let _utbotBusy  = false;   // UTBot — flag terpisah
+let _manageBusy = false;   // management cycle
 let _cronTasks  = [];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: konversi menit ke cron expression yang valid
+// node-cron: field menit hanya valid 0–59
+// Jika interval >= 60 → pakai field jam
+// ─────────────────────────────────────────────────────────────────────────────
+function intervalToCron(minutes) {
+  if (minutes <= 0) minutes = 60;
+
+  if (minutes < 60) {
+    // Contoh: 10 → */10 * * * *  (valid)
+    return `*/${minutes} * * * *`;
+  }
+
+  if (minutes === 60) {
+    // Tiap jam tepat di menit ke-0
+    return `0 * * * *`;
+  }
+
+  // Lebih dari 60 menit → konversi ke jam
+  const hours = Math.floor(minutes / 60);
+  return `0 */${hours} * * *`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SPLIT ENTRY HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Beli Entry 1 saja (30% @ EMA21 zone)
- */
 async function executeBuyEntry1(candidate) {
   const maxPos = config.trading.maxOpenPositions;
   const open   = getOpenSymbols().length;
@@ -89,9 +110,6 @@ async function executeBuyEntry1(candidate) {
   }
 }
 
-/**
- * Beli Entry 2 saja (70% @ OB/Demand zone)
- */
 async function executeBuyEntry2(candidate) {
   const pct2    = (config.trading.splitEntry?.portion2Pct ?? 45) / 100;
   const budget2 = config.trading.budgetPerTrade * pct2;
@@ -119,9 +137,6 @@ async function executeBuyEntry2(candidate) {
   }
 }
 
-/**
- * Beli kedua entry sekaligus (100% budget)
- */
 async function executeBuyAll(candidate) {
   const maxPos = config.trading.maxOpenPositions;
   const open   = getOpenSymbols().length;
@@ -153,15 +168,11 @@ async function executeBuyAll(candidate) {
   }
 }
 
-// Set approval callbacks
-// /approve → entry1, /approve2 → entry2, /approveall → keduanya
-// Untuk kompatibilitas approvalQueue, default /approve = entry1
 setCallbacks({
   onApprove: executeBuyEntry1,
   onExpire:  (symbol) => notifyError(`⏰ Konfirmasi ${symbol} expired, dilewati.`),
 });
 
-// Expose entry2 & all untuk telegramCommands
 export { executeBuyEntry2, executeBuyAll };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +189,7 @@ async function sendApprovalRequests(candidates) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MTF SCREENING (screener utama)
+// MTF SCREENING
 // ─────────────────────────────────────────────────────────────────────────────
 export async function doMTFScreening() {
   if (_screenBusy) { log('cron', 'Screening masih berjalan, skip'); return []; }
@@ -206,17 +217,14 @@ export async function doMTFScreening() {
 
     if (candidates.length === 0) return [];
 
-    // Pisahkan triggered (3/3 TF) dan pre-alert (1-2/3 TF)
     const triggered = candidates.filter(c => c.triggered);
     const preAlert  = candidates.filter(c => !c.triggered);
 
-    // Triggered → masuk approval queue dengan notif lengkap + AI verdict
     if (triggered.length > 0) {
       log('screener', `✅ ${triggered.length} kandidat triggered → approval queue`);
       await sendApprovalRequests(triggered);
     }
 
-    // Pre-alert → notif ringkas saja, tidak masuk approval queue
     if (preAlert.length > 0) {
       log('screener', `⏳ ${preAlert.length} kandidat pre-alert → notif pantau`);
       await notifyPreAlert(preAlert);
@@ -234,7 +242,7 @@ export async function doMTFScreening() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCREENER LAMA (fallback, tetap tersedia via Telegram)
+// SCREENER LAMA (fallback, manual via Telegram)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function doGainerScreening() {
   if (_screenBusy) { log('cron', 'Screening masih berjalan, skip'); return []; }
@@ -294,7 +302,7 @@ export async function doScreening() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MANAGEMENT
+// PRE-ALERT RECHECK
 // ─────────────────────────────────────────────────────────────────────────────
 export async function doPreAlertRecheck() {
   if (_screenBusy) { log('cron', 'Screening masih berjalan, skip pre-alert recheck'); return; }
@@ -316,7 +324,7 @@ export async function doPreAlertRecheck() {
     const filteredTickers = tickers.filter(t => preAlertSymbols.includes(t.symbol));
     if (!filteredTickers.length) return;
 
-    const candidates  = await runMTFScreening(filteredTickers, config);
+    const candidates   = await runMTFScreening(filteredTickers, config);
     const nowTriggered = candidates.filter(c => c.triggered);
     const stillPre     = candidates.filter(c => !c.triggered);
 
@@ -338,22 +346,87 @@ export async function doPreAlertRecheck() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UTBOT SCREENER — flag terpisah, approval queue (Opsi B)
+// ─────────────────────────────────────────────────────────────────────────────
 export async function doUTBotScreener() {
-  if (_screenBusy) { log('cron', 'Screening masih berjalan, skip UTBot'); return []; }
-  _screenBusy = true;
+  // Pakai _utbotBusy — tidak terblokir oleh _screenBusy MTF
+  if (_utbotBusy) { log('cron', 'UTBot masih berjalan, skip'); return []; }
+  _utbotBusy = true;
+
   try {
     const tickers = await getAllTickers();
     const signals = await runUTBotScreener(tickers);
-    if (signals.length > 0) await notifyUTBot(signals);
+
+    const buySignals  = signals.filter(s => s.signal === 'BUY');
+    const sellSignals = signals.filter(s => s.signal === 'SELL');
+
+    // ── BUY signal → approval queue ──────────────────────────────────────
+    if (buySignals.length > 0) {
+      const eligible = buySignals.filter(s => !s.hasPosition);
+      const skipped  = buySignals.filter(s => s.hasPosition);
+
+      if (skipped.length > 0) {
+        log('utbot', `  Skip ${skipped.length} BUY (sudah punya posisi): ${skipped.map(s => s.symbol).join(', ')}`);
+      }
+
+      if (eligible.length > 0) {
+        const openCount = getOpenSymbols().length;
+        const maxPos    = config.trading.maxOpenPositions;
+        const slotLeft  = maxPos - openCount;
+
+        if (slotLeft <= 0) {
+          log('utbot', `  Slot penuh (${openCount}/${maxPos}), UTBot BUY tidak masuk queue`);
+          await notifyError(`📡 UT Bot: ${eligible.length} BUY signal tapi slot posisi penuh (${openCount}/${maxPos})`);
+        } else {
+          const toQueue    = eligible.slice(0, slotLeft);
+          const timeoutMin = config.trading.approvalTimeoutMin ?? 60;
+
+          log('utbot', `  ${toQueue.length} BUY signal → approval queue`);
+
+          // Kirim notif ringkas UTBot dulu
+          await notifyUTBot(signals);
+
+          // Masukkan ke approval queue satu per satu
+          for (const s of toQueue) {
+            const added = addToQueue(s, timeoutMin);
+            if (added) {
+              await notifyApprovalRequest({ candidate: s, timeoutMin });
+            } else {
+              log('utbot', `  ${s.symbol} sudah ada di queue, skip`);
+            }
+          }
+        }
+      } else {
+        // Semua BUY sudah punya posisi — kirim notif info saja
+        if (signals.length > 0) await notifyUTBot(signals);
+      }
+    }
+
+    // ── SELL signal → notif info saja, manager yang handle exit ──────────
+    if (sellSignals.length > 0) {
+      log('utbot', `  ${sellSignals.length} SELL signal (info saja, manager yang handle exit)`);
+      await notifyUTBot(sellSignals);
+    }
+
+    // Tidak ada signal sama sekali
+    if (signals.length === 0) {
+      log('utbot', '  Tidak ada sinyal UTBot saat ini');
+    }
+
     return signals;
+
   } catch (err) {
     log('cron_error', `UTBot screener error: ${err.message}`);
     return [];
   } finally {
-    _screenBusy = false;
+    _utbotBusy = false;
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
 export async function doManagement() {
   if (_manageBusy) { log('cron', 'Management masih berjalan, skip'); return; }
   _manageBusy = true;
@@ -370,7 +443,7 @@ export async function doManagement() {
 export { approveCandidate, skipCandidate, getPendingQueue };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CRON
+// CRON — fixed dengan intervalToCron()
 // ─────────────────────────────────────────────────────────────────────────────
 function startCron() {
   stopCron();
@@ -378,11 +451,24 @@ function startCron() {
   const manageMin   = config.schedule?.managementIntervalMin    ?? 10;
   const preAlertMin = config.schedule?.preAlertRecheckMin       ?? 60;
   const utbotMin    = config.screening?.utbot?.checkIntervalMin ?? 60;
-  const mtfCron     = config.schedule?.mtfCron  || '30 0 * * *';  // 07:30 WIB
-  const mtfCron2    = config.schedule?.mtfCron2 || '0 6 * * *';   // 13:00 WIB
-  const mtfCron3    = config.schedule?.mtfCron3 || '0 12 * * *';  // 19:00 WIB
+  const mtfCron     = config.schedule?.mtfCron  || '30 0 * * *';
+  const mtfCron2    = config.schedule?.mtfCron2 || '0 6 * * *';
+  const mtfCron3    = config.schedule?.mtfCron3 || '0 12 * * *';
 
-  // Wrapper screening dengan label waktu
+  // Konversi interval menit ke cron expression yang valid
+  const cronManage   = intervalToCron(manageMin);
+  const cronPreAlert = intervalToCron(preAlertMin);
+  const cronUtbot    = intervalToCron(utbotMin);
+
+  // Log cron expressions untuk verifikasi
+  log('cron', `Cron expressions:`);
+  log('cron', `  MTF Pagi    : ${mtfCron}     → 07:30 WIB`);
+  log('cron', `  MTF Siang   : ${mtfCron2}      → 13:00 WIB`);
+  log('cron', `  MTF Sore    : ${mtfCron3}     → 19:00 WIB`);
+  log('cron', `  Management  : ${cronManage}  → setiap ${manageMin} menit`);
+  log('cron', `  Pre-alert   : ${cronPreAlert}       → setiap ${preAlertMin} menit`);
+  log('cron', `  UTBot       : ${cronUtbot}       → setiap ${utbotMin} menit`);
+
   const doMTFMorning = async () => {
     log('cron', '🌅 Screening pagi (07:30 WIB) — setelah daily close');
     return doMTFScreening();
@@ -396,29 +482,36 @@ function startCron() {
     return doMTFScreening();
   };
 
-  const mtfTask1     = cron.schedule(mtfCron,  doMTFMorning,  { timezone: 'UTC' });
-  const mtfTask2     = cron.schedule(mtfCron2, doMTFNoon,     { timezone: 'UTC' });
-  const mtfTask3     = cron.schedule(mtfCron3, doMTFEvening,  { timezone: 'UTC' });
-  const manageTask   = cron.schedule(`*/${manageMin} * * * *`, doManagement);
-  const preAlertTask = cron.schedule(`*/${preAlertMin} * * * *`, async () => {
+  const mtfTask1 = cron.schedule(mtfCron,  doMTFMorning,  { timezone: 'UTC' });
+  const mtfTask2 = cron.schedule(mtfCron2, doMTFNoon,     { timezone: 'UTC' });
+  const mtfTask3 = cron.schedule(mtfCron3, doMTFEvening,  { timezone: 'UTC' });
+
+  const manageTask = cron.schedule(cronManage, doManagement);
+
+  const preAlertTask = cron.schedule(cronPreAlert, async () => {
     log('cron', `🔄 Pre-alert recheck (setiap ${preAlertMin} menit)`);
     await doPreAlertRecheck();
   });
-  const utbotTask    = cron.schedule(`*/${utbotMin} * * * *`, async () => {
+
+  const utbotTask = cron.schedule(cronUtbot, async () => {
     const utEnabled = config.screening?.utbot?.enabled ?? false;
-    if (!utEnabled) return;
+    if (!utEnabled) {
+      log('cron', 'UTBot disabled di config, skip');
+      return;
+    }
     log('cron', `📡 UT Bot Alert screening (setiap ${utbotMin} menit)`);
     await doUTBotScreener();
   });
 
   _cronTasks = [mtfTask1, mtfTask2, mtfTask3, manageTask, preAlertTask, utbotTask];
+
   log('cron', `Cron aktif:`);
-  log('cron', `  🌅 MTF Pagi    → 07:30 WIB (setelah daily close)`);
+  log('cron', `  🌅 MTF Pagi    → 07:30 WIB`);
   log('cron', `  ☀️  MTF Siang   → 13:00 WIB`);
   log('cron', `  🌆 MTF Sore    → 19:00 WIB`);
-  log('cron', `  🔄 Pre-alert   → setiap ${preAlertMin} menit`);
-  log('cron', `  📡 UT Bot      → setiap ${utbotMin} menit ${config.screening?.utbot?.enabled ? '✅' : '(disabled)'}`);
-  log('cron', `  ⚙️  Management  → setiap ${manageMin} menit`);
+  log('cron', `  🔄 Pre-alert   → setiap ${preAlertMin} menit  [cron: ${cronPreAlert}]`);
+  log('cron', `  📡 UT Bot      → setiap ${utbotMin} menit  [cron: ${cronUtbot}] ${config.screening?.utbot?.enabled ? '✅' : '(disabled)'}`);
+  log('cron', `  ⚙️  Management  → setiap ${manageMin} menit  [cron: ${cronManage}]`);
 }
 
 function stopCron() {
@@ -436,7 +529,7 @@ async function showStatus() {
   const pending   = getPendingQueue();
 
   console.log('\n══════════════════════════════════════');
-  console.log('  📊 STATUS BOT v3.0 MTF');
+  console.log('  📊 STATUS BOT v3.1 MTF');
   console.log('══════════════════════════════════════');
   console.log(`  Mode     : ${isDryRun ? '🧪 DRY RUN' : '💸 LIVE'}`);
   console.log(`  Open Pos : ${stats.openPositions}/${config.trading.maxOpenPositions}`);
@@ -447,7 +540,8 @@ async function showStatus() {
     console.log(`\n  ⏳ Menunggu Approval (${pending.length}):`);
     for (const p of pending) {
       const triggered = p.candidate.triggered ? '⚡ TRIGGERED' : '⏳ pre-alert';
-      console.log(`    ${p.symbol} — sisa ${p.minsLeft} menit [${triggered}]`);
+      const strategy  = p.candidate.strategy === 'utbot' ? '[UTBot]' : '[MTF]';
+      console.log(`    ${strategy} ${p.symbol} — sisa ${p.minsLeft} menit [${triggered}]`);
     }
   }
 
@@ -476,10 +570,10 @@ function startREPL() {
   const rl = readline.createInterface({
     input:  process.stdin,
     output: process.stdout,
-    prompt: '\n[bitget-bot v3] > ',
+    prompt: '\n[bitget-bot v3.1] > ',
   });
 
-  console.log('\n📖 Perintah: status | mtf | screen | gainer | trend | reversal | manage | stats | stop | help\n');
+  console.log('\n📖 Perintah: status | mtf | screen | gainer | trend | reversal | utbot | manage | stats | stop | help\n');
   rl.prompt();
 
   rl.on('line', async (line) => {
@@ -493,6 +587,7 @@ function startREPL() {
       case 'gainer':   await doGainerScreening(); break;
       case 'trend':    await doTrendScreening(); break;
       case 'reversal': await doReversalScreening(); break;
+      case 'utbot':    await doUTBotScreener(); break;
       case 'manage':   await doManagement(); break;
       case 'stats':    await notifyStats(getStats()); console.log('📊 Stats dikirim ke Telegram'); break;
       case 'stop':
@@ -504,9 +599,10 @@ function startREPL() {
           '  status   — posisi terbuka & PnL',
           '  mtf      — jalankan MTF Smart Money screener',
           '  screen   — jalankan semua screener',
-          '  gainer   — daily gainer screener (legacy)',
-          '  reversal — reversal screener (legacy)',
-          '  trend    — trend screener (legacy)',
+          '  gainer   — daily gainer screener',
+          '  reversal — reversal screener',
+          '  trend    — trend screener',
+          '  utbot    — UT Bot Alert screener (→ approval queue)',
           '  manage   — cek TP/SL semua posisi',
           '  stats    — kirim ringkasan ke Telegram',
           '  stop     — hentikan bot',
@@ -527,7 +623,7 @@ function startREPL() {
 async function main() {
   console.log('');
   console.log('╔════════════════════════════════════════════╗');
-  console.log('║   Bitget Spot Bot v3.0 — MTF Smart Money  ║');
+  console.log('║  Bitget Spot Bot v3.1.1 — MTF + UTBot Fix ║');
   console.log('╚════════════════════════════════════════════╝');
   console.log(`  Mode: ${isDryRun ? '🧪 DRY RUN' : '💸 LIVE TRADING'}`);
   console.log('');
@@ -547,14 +643,21 @@ async function main() {
   const cfg  = config;
   const pct1 = cfg.trading.splitEntry?.portion1Pct ?? 55;
   const pct2 = cfg.trading.splitEntry?.portion2Pct ?? 45;
+
+  // Log jadwal untuk verifikasi saat startup
+  const manageMin   = cfg.schedule?.managementIntervalMin ?? 10;
+  const preAlertMin = cfg.schedule?.preAlertRecheckMin    ?? 60;
+  const utbotMin    = cfg.screening?.utbot?.checkIntervalMin ?? 60;
+
   log('startup', `Config:`);
   log('startup', `  Budget/trade : ${cfg.trading.budgetPerTrade} USDT (Entry1 ${pct1}%: ${(cfg.trading.budgetPerTrade * pct1 / 100).toFixed(0)}, Entry2 ${pct2}%: ${(cfg.trading.budgetPerTrade * pct2 / 100).toFixed(0)})`);
   log('startup', `  Max posisi   : ${cfg.trading.maxOpenPositions}`);
-  log('startup', `  Min volume   : $${((cfg.screening?.mtf?.minVolume24h ?? 2e6) / 1e6).toFixed(0)}M`);
   log('startup', `  Whitelist    : ${(cfg.whitelist?.length ?? 0)} koin`);
-  log('startup', `  SL buffer    : ${(cfg.management.slBuffer * 100).toFixed(1)}% bawah demand zone`);
-  log('startup', `  TP1          : tutup 50% → geser SL ke BEP`);
-  log('startup', `  Trailing     : aktif >= ${cfg.management.trailingStop.activateAtProfitPct ?? 4}% profit | callback ${cfg.management.trailingStop.trailPct}%`);
+  log('startup', `Jadwal:`);
+  log('startup', `  MTF          : 07:30 / 13:00 / 19:00 WIB`);
+  log('startup', `  Management   : setiap ${manageMin} menit [cron: ${intervalToCron(manageMin)}]`);
+  log('startup', `  Pre-alert    : setiap ${preAlertMin} menit [cron: ${intervalToCron(preAlertMin)}]`);
+  log('startup', `  UTBot        : setiap ${utbotMin} menit [cron: ${intervalToCron(utbotMin)}] ${cfg.screening?.utbot?.enabled ? '✅' : '❌ disabled'}`);
 
   await notifyStartup(isDryRun, config);
 
@@ -563,6 +666,9 @@ async function main() {
   }
   if (args.includes('--manage-only')) {
     await doManagement(); process.exit(0);
+  }
+  if (args.includes('--utbot-only')) {
+    await doUTBotScreener(); process.exit(0);
   }
 
   await initState();
@@ -581,14 +687,14 @@ async function main() {
     doUTBotScreener,
     doManagement,
     approveCandidate,
-    approveEntry2:      (symbol) => {
-      const q = getPendingQueue();
+    approveEntry2: (symbol) => {
+      const q    = getPendingQueue();
       const item = q.find(p => p.symbol === symbol);
       if (!item) return { ok: false, reason: `${symbol} tidak ada di queue` };
       return executeBuyEntry2(item.candidate).then(() => ({ ok: true }));
     },
-    approveAll:         (symbol) => {
-      const q = getPendingQueue();
+    approveAll: (symbol) => {
+      const q    = getPendingQueue();
       const item = q.find(p => p.symbol === symbol);
       if (!item) return { ok: false, reason: `${symbol} tidak ada di queue` };
       return executeBuyAll(item.candidate).then(() => ({ ok: true }));
@@ -597,10 +703,9 @@ async function main() {
     getPendingQueue,
     getAllPositions,
     getCurrentPrice,
-    stopBot:            () => { stopCron(); process.exit(0); },
+    stopBot: () => { stopCron(); process.exit(0); },
   });
 
-  // ── Dashboard API Server ───────────────────────────────────────────────────
   startApiServer({
     doMTFScreening,
     doTrendScreening,
@@ -630,10 +735,9 @@ async function main() {
       const { executeBuy } = await import('./executor.js');
       const { split, slPrice, tp1Price, budget } = opts;
 
-      // Tentukan budget berdasarkan split
-      const baseBudget = budget || config.trading.budgetPerTrade;
-      const p1 = (config.trading.splitEntry?.portion1Pct ?? 55) / 100;
-      const p2 = (config.trading.splitEntry?.portion2Pct ?? 45) / 100;
+      const baseBudget  = budget || config.trading.budgetPerTrade;
+      const p1          = (config.trading.splitEntry?.portion1Pct ?? 55) / 100;
+      const p2          = (config.trading.splitEntry?.portion2Pct ?? 45) / 100;
       const finalBudget = split === 'entry1' ? baseBudget * p1
                         : split === 'entry2' ? baseBudget * p2
                         : baseBudget;
@@ -645,21 +749,11 @@ async function main() {
         strategy:     'manual',
         budget:       finalBudget,
         entryPortion: split === 'entry1' ? 1 : split === 'entry2' ? 2 : 'all',
-        // Simpan SL dan TP1 custom ke candidate agar disimpan ke state
         slPrice:      slPrice  || null,
         tp1Price:     tp1Price || null,
       };
 
-      const result = await executeBuy(candidate);
-
-      // Jika berhasil dan ada SL/TP1 custom, update posisi di state
-      if (result.success && (slPrice || tp1Price)) {
-        const { getPosition } = await import('./state.js');
-        // slPrice dan tp1Price sudah tersimpan via openPosition di state
-        log('executor', `📍 Manual SL: ${slPrice || 'config'} | TP1: ${tp1Price || 'auto R:R'}`);
-      }
-
-      return result;
+      return executeBuy(candidate);
     },
     executeSellManual: async (symbol, opts = {}) => {
       const { executeSell, executePartialSell } = await import('./executor.js');
@@ -668,7 +762,6 @@ async function main() {
 
       const sellPct = opts.sellPct ?? 100;
 
-      // Partial sell
       if (sellPct < 100) {
         return executePartialSell(symbol, {
           sellPct,
