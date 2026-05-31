@@ -94,9 +94,13 @@ export async function notifyBuy({ symbol, price, quantity, budget, score, signal
 // ── Approval Request MTF (dengan AI verdict) ──────────────────────────────────
 export async function notifyApprovalRequest({ candidate, timeoutMin }) {
   const c          = candidate;
-  const stratLabel = c.strategy === 'mtfSmartMoney' ? '🧠 MTF Smart Money'
-    : c.strategy === 'reversal' ? '🔄 Reversal Hunter'
-    : c.strategy === 'trendFollowing' ? '📈 Trend Following' : '🚀 Daily Gainer';
+  const stratLabel =
+    strategy === 'mtfSmartMoney'   ? '🧠 MTF Smart Money'
+  : strategy === 'reversal'        ? '🔄 Reversal Hunter'
+  : strategy === 'trendFollowing'  ? '📈 Trend Following'
+  : strategy === 'utbot'           ? '📡 UT Bot Alert'
+  : strategy === 'manual'          ? '🖐 Manual'
+  :                                  '🚀 Daily Gainer';
 
   const changeStr  = c.change24h >= 0 ? `+${c.change24h.toFixed(2)}` : c.change24h.toFixed(2);
   const trig       = c.triggered ? `⚡ <b>1H TRIGGERED</b>` : `⏳ Pre-alert (belum trigger 1H)`;
