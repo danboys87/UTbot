@@ -46,15 +46,16 @@ async function sendLong(text) {
 // ── BUY Notification ─────────────────────────────────────────────────────────
 export async function notifyBuy({ symbol, price, quantity, budget, score, signals, slPrice, entryPortion, zones, strategy, change24h }) {
   const stratLabel =
-      strategy === 'mtfSmartMoney' ? '🧠 MTF Smart Money'
-    : strategy === 'reversal'      ? '🔄 Reversal Hunter'
-    : strategy === 'trendFollowing'? '📈 Trend Following'
-    : strategy === 'manual'        ? '🖐 Manual'
-    :                                '🚀 Daily Gainer';
+    strategy === 'mtfSmartMoney'   ? '🧠 MTF Smart Money'
+  : strategy === 'reversal'        ? '🔄 Reversal Hunter'
+  : strategy === 'trendFollowing'  ? '📈 Trend Following'
+  : strategy === 'utbot'           ? '📡 UT Bot Alert'
+  : strategy === 'manual'          ? '🖐 Manual'
+  :                                  '🚀 Daily Gainer';
 
   const portionLabel =
-      entryPortion === 1   ? '📌 Entry 1/2 — 30% posisi (EMA21 zone)'
-    : entryPortion === 2   ? '📌 Entry 2/2 — 70% posisi (OB/Demand zone)'
+      entryPortion === 1   ? '📌 Entry 1/2 — 55% posisi (EMA21 zone)'
+    : entryPortion === 2   ? '📌 Entry 2/2 — 45% posisi (OB/Demand zone)'
     : entryPortion === 'all'? '📌 Full Entry — 100% posisi'
     : '';
 
@@ -151,8 +152,8 @@ export async function notifyApprovalRequest({ candidate, timeoutMin }) {
     signalLines ? `\n<b>✅ Sinyal:</b>\n${signalLines}` : '',
     ``,
     `<b>Perintah:</b>`,
-    `/approve ${c.symbol}    → Entry 1 (30%)`,
-    `/approve2 ${c.symbol}   → Entry 2 (70%)`,
+    `/approve ${c.symbol}    → Entry 1 (55%)`,
+    `/approve2 ${c.symbol}   → Entry 2 (45%)`,
     `/approveall ${c.symbol} → Full position`,
     `/analyze ${c.symbol}    → Detail AI analisa`,
     `/skip ${c.symbol}       → Lewati`,
