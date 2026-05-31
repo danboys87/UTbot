@@ -1,11 +1,11 @@
 /**
- * Bitget Spot Trading Bot v3.1 — MTF Smart Money
+ * Bitget Spot Trading Bot v3.1.1 — MTF Smart Money
  * Entry point utama
  *
  * Fix v3.1.1:
- *  - Cron */60 * * * * tidak valid → pakai intervalToCron() helper
+ *  - Cron interval 60 menit tidak valid (pakai intervalToCron helper)
  *  - Pisah flag _utbotBusy agar UTBot tidak terblokir _screenBusy MTF
- *  - UTBot BUY signal → approval queue (Opsi B)
+ *  - UTBot BUY signal masuk approval queue (Opsi B)
  */
 
 import { createRequire } from 'module';
@@ -56,7 +56,7 @@ function intervalToCron(minutes) {
   if (minutes <= 0) minutes = 60;
 
   if (minutes < 60) {
-    // Contoh: 10 → */10 * * * *  (valid)
+    // Contoh: interval 10 menit, valid range 1-59
     return `*/${minutes} * * * *`;
   }
 
