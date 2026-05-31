@@ -3,9 +3,9 @@
  * Entry point utama
  *
  * Fix v3.1.1:
- *  - Cron */60 * * * * tidak valid → pakai intervalToCron() helper
- *  - Pisah flag _utbotBusy agar UTBot tidak terblokir _screenBusy MTF
- *  - UTBot BUY signal → approval queue (Opsi B)
+ * - Cron * / 60 * * * * tidak valid → pakai intervalToCron() helper
+ * - Pisah flag _utbotBusy agar UTBot tidak terblokir _screenBusy MTF
+ * - UTBot BUY signal → approval queue (Opsi B)
  */
 
 import { createRequire } from 'module';
@@ -48,6 +48,13 @@ let _manageBusy = false;   // management cycle
 let _cronTasks  = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HELPER: UTILS
+// ─────────────────────────────────────────────────────────────────────────────
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HELPER: konversi menit ke cron expression yang valid
 // node-cron: field menit hanya valid 0–59
 // Jika interval >= 60 → pakai field jam
@@ -56,7 +63,7 @@ function intervalToCron(minutes) {
   if (minutes <= 0) minutes = 60;
 
   if (minutes < 60) {
-    // Contoh: 10 → */10 * * * *  (valid)
+    // Contoh: 10 → */10 * * * * (valid)
     return `*/${minutes} * * * *`;
   }
 
@@ -350,7 +357,6 @@ export async function doPreAlertRecheck() {
 // UTBOT SCREENER — flag terpisah, approval queue (Opsi B)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function doUTBotScreener() {
-  // Pakai _utbotBusy — tidak terblokir oleh _screenBusy MTF
   if (_utbotBusy) { log('cron', 'UTBot masih berjalan, skip'); return []; }
   _utbotBusy = true;
 
@@ -361,7 +367,6 @@ export async function doUTBotScreener() {
     const buySignals  = signals.filter(s => s.signal === 'BUY');
     const sellSignals = signals.filter(s => s.signal === 'SELL');
 
-    // ── BUY signal → approval queue ──────────────────────────────────────
     if (buySignals.length > 0) {
       const eligible = buySignals.filter(s => !s.hasPosition);
       const skipped  = buySignals.filter(s => s.hasPosition);
@@ -384,10 +389,8 @@ export async function doUTBotScreener() {
 
           log('utbot', `  ${toQueue.length} BUY signal → approval queue`);
 
-          // Kirim notif ringkas UTBot dulu
           await notifyUTBot(signals);
 
-          // Masukkan ke approval queue satu per satu
           for (const s of toQueue) {
             const added = addToQueue(s, timeoutMin);
             if (added) {
@@ -398,18 +401,15 @@ export async function doUTBotScreener() {
           }
         }
       } else {
-        // Semua BUY sudah punya posisi — kirim notif info saja
         if (signals.length > 0) await notifyUTBot(signals);
       }
     }
 
-    // ── SELL signal → notif info saja, manager yang handle exit ──────────
     if (sellSignals.length > 0) {
       log('utbot', `  ${sellSignals.length} SELL signal (info saja, manager yang handle exit)`);
       await notifyUTBot(sellSignals);
     }
 
-    // Tidak ada signal sama sekali
     if (signals.length === 0) {
       log('utbot', '  Tidak ada sinyal UTBot saat ini');
     }
@@ -455,12 +455,10 @@ function startCron() {
   const mtfCron2    = config.schedule?.mtfCron2 || '0 6 * * *';
   const mtfCron3    = config.schedule?.mtfCron3 || '0 12 * * *';
 
-  // Konversi interval menit ke cron expression yang valid
   const cronManage   = intervalToCron(manageMin);
   const cronPreAlert = intervalToCron(preAlertMin);
   const cronUtbot    = intervalToCron(utbotMin);
 
-  // Log cron expressions untuk verifikasi
   log('cron', `Cron expressions:`);
   log('cron', `  MTF Pagi    : ${mtfCron}     → 07:30 WIB`);
   log('cron', `  MTF Siang   : ${mtfCron2}      → 13:00 WIB`);
@@ -644,7 +642,6 @@ async function main() {
   const pct1 = cfg.trading.splitEntry?.portion1Pct ?? 55;
   const pct2 = cfg.trading.splitEntry?.portion2Pct ?? 45;
 
-  // Log jadwal untuk verifikasi saat startup
   const manageMin   = cfg.schedule?.managementIntervalMin ?? 10;
   const preAlertMin = cfg.schedule?.preAlertRecheckMin    ?? 60;
   const utbotMin    = cfg.screening?.utbot?.checkIntervalMin ?? 60;
@@ -785,7 +782,3 @@ main().catch(err => {
   log('fatal', err.message);
   process.exit(1);
 });
-
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
