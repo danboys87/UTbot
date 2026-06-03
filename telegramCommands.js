@@ -1,11 +1,12 @@
 /**
- * Telegram Command Handler v3.1 — MTF + AI Analyst
+ * Telegram Command Handler v3.2 — Gainer+UTBot Pipeline
  *
- * Perintah baru:
- *   /analyze SYMBOL  — jalankan AI analisa lengkap on-demand
- *   /approve2 SYMBOL — entry 2 (70% @ OB zone)
- *   /approveall SYMBOL — full position
- *   /mtf             — jalankan MTF screener
+ * Perubahan v3.2:
+ *   - Hapus /trend dan /reversal
+ *   - /gainer   — tampilkan list koin gainer ≥10%
+ *   - /pipeline — jalankan Gainer ≥10% → UTBot pipeline
+ *   - /utbot    — UT Bot Alert standalone (semua koin)
+ *   - /mtf      — MTF Smart Money screener
  */
 
 import { log }                 from './logger.js';
@@ -24,7 +25,6 @@ let _offset = 0, _polling = false, _pollTimer = null;
 
 async function reply(chatId, text) {
   if (!getBase()) return;
-  // Split jika > 4000 char
   const LIMIT = 4000;
   const chunks = [];
   if (text.length <= LIMIT) {
@@ -66,11 +66,10 @@ async function buildStatusText(callbacks) {
   const pending   = callbacks.getPendingQueue();
   const isDryRun  = process.env.DRY_RUN === 'true';
   const _aiSt = (() => { try { return getAIStatus(); } catch { return {enabled:false}; } })();
-  const aiActive  = _aiSt.enabled;
 
-  let text = `📊 <b>Status Bot v3.1</b>\n`;
+  let text = `📊 <b>Status Bot v3.2</b>\n`;
   text += `Mode     : ${isDryRun ? '🧪 DRY RUN' : '💸 LIVE'}\n`;
-  text += `AI Analyst: ${aiActive ? `🤖 ${_aiSt.provider}/${_aiSt.model}` : '⚠️ set GEMINI_API_KEY di .env'}\n`;
+  text += `AI Analyst: ${_aiSt.enabled ? `🤖 ${_aiSt.provider}/${_aiSt.model}` : '⚠️ set GEMINI_API_KEY di .env'}\n`;
   text += `Open Pos : ${stats.openPositions}/${config.trading.maxOpenPositions}\n`;
   text += `Closed   : ${stats.closedCount}\n`;
   text += `Total PnL: ${stats.totalPnlUsdt >= 0 ? '+' : ''}${stats.totalPnlUsdt?.toFixed(2)} USDT\n`;
@@ -79,18 +78,20 @@ async function buildStatusText(callbacks) {
     text += `\n<b>⏳ Menunggu Approval (${pending.length}):</b>\n`;
     for (const p of pending) {
       const trig   = p.candidate.triggered ? '⚡' : '⏳';
-      const aiVerdict = p.candidate.aiAnalysis?.verdict;
-      const aiTag  = aiVerdict ? ` | 🤖 ${aiVerdict}` : '';
-      text += `  ${trig} <b>${p.symbol}</b>${aiTag} — sisa ${p.minsLeft}m\n`;
+      const ai     = p.candidate.aiAnalysis?.verdict;
+      const strat  = p.candidate.strategy === 'gainerUTBot' ? '[🚀📡]'
+                   : p.candidate.strategy === 'utbot'       ? '[📡]'
+                   :                                          '[🧠]';
+      const aiTag  = ai ? ` 🤖 ${ai}` : '';
+      text += `  ${trig} ${strat} <b>${p.symbol}</b>${aiTag} — sisa ${p.minsLeft}m\n`;
     }
   }
 
   if (stats.openPositions > 0) {
     text += `\n<b>Posisi Terbuka:</b>\n`;
     for (const [symbol, pos] of Object.entries(positions)) {
-      const hasBEP    = pos.partialSells?.some(ps => ps.reason === 'tp1_partial');
-      const hasDoneTP1 = hasBEP;
-      const mgmt      = config.management;
+      const hasBEP = pos.partialSells?.some(ps => ps.reason === 'tp1_partial');
+      const mgmt   = config.management;
       try {
         const cur   = await getCurrentPrice(symbol);
         const pnl   = cur ? ((cur - pos.entryPrice) / pos.entryPrice * 100) : null;
@@ -98,25 +99,14 @@ async function buildStatusText(callbacks) {
         const sign  = pnl >= 0 ? '+' : '';
         const emoji = pnl >= 0 ? '🟢' : '🔴';
         const flags = [hasBEP ? 'BEP✅' : '', pos.trailingActive ? '🔻TRAIL' : ''].filter(Boolean).join(' ');
-
-        // Hitung SL efektif
         const effectiveSL = (hasBEP || pos.trailingActive)
           ? pos.entryPrice * (1 - 0.001)
           : (pos.slPrice ?? pos.entryPrice * (1 - Math.abs(mgmt.stopLossPct ?? 4) / 100));
-
-        // Hitung TP1
-        const tp1 = pos.tp1Price
-          ? pos.tp1Price
-          : pos.entryPrice + (pos.entryPrice - effectiveSL) * (mgmt.minRiskReward ?? 2);
-
-        // Estimasi TP2
-        const tp2 = tp1 + (tp1 - pos.entryPrice) * 0.5;
-
+        const tp1 = pos.tp1Price ?? pos.entryPrice + (pos.entryPrice - effectiveSL) * (mgmt.minRiskReward ?? 2);
         text += `${emoji} <b>${symbol}</b>${flags ? ' ' + flags : ''}\n`;
         text += `   Entry : ${pos.entryPrice} | Now: ${cur ?? '—'}\n`;
-        text += `   SL    : ${effectiveSL.toFixed(6)}${(hasBEP || pos.trailingActive) ? ' (BEP)' : ''}\n`;
-        text += `   TP1   : ${hasDoneTP1 ? '✅ done' : tp1.toFixed(6)}\n`;
-        text += `   TP2   : ~${tp2.toFixed(6)}\n`;
+        text += `   SL    : ${effectiveSL.toFixed(6)}\n`;
+        text += `   TP1   : ${hasBEP ? '✅ done' : tp1.toFixed(6)}\n`;
         if (pnl !== null) text += `   PnL   : ${sign}${pnl.toFixed(2)}% (${sign}${usdt.toFixed(2)} USDT)\n`;
       } catch { text += `⚪ ${symbol} | Entry: ${pos.entryPrice}\n`; }
     }
@@ -142,7 +132,7 @@ async function handleCommand(chatId, text, callbacks) {
       break;
     }
 
-    // ── Screener ────────────────────────────────────────────────────────────
+    // ── Screener ─────────────────────────────────────────────────────────────
     case '/mtf': {
       await reply(chatId, '🧠 MTF Smart Money Screening dimulai...\n🤖 AI analisa akan berjalan otomatis.');
       callbacks.doMTFScreening()
@@ -151,47 +141,58 @@ async function handleCommand(chatId, text, callbacks) {
       break;
     }
 
-    case '/screen': {
-      await reply(chatId, '🔍 Menjalankan screening...');
-      callbacks.doScreening()
-        .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat.'); })
-        .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
-      break;
-    }
-
-    case '/trend': {
-      await reply(chatId, '📈 Trend Following...');
-      callbacks.doTrendScreening?.()
-        .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat.'); })
-        .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
-      break;
-    }
-
-    case '/reversal': {
-      await reply(chatId, '🔄 Reversal Hunter...');
-      callbacks.doReversalScreening?.()
-        .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat.'); })
-        .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
-      break;
-    }
-
     case '/gainer': {
-      await reply(chatId, '🚀 Daily Gainer Screening dimulai...');
+      await reply(chatId, '🚀 Mengambil daftar Gainer ≥10%...');
       callbacks.doGainerScreening?.()
-        .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat gainer.'); })
+        .then(gainers => {
+          if (!gainers?.length) {
+            reply(chatId, '⚠️ Tidak ada koin gainer ≥10% saat ini.');
+            return;
+          }
+          let msg = `🚀 <b>Gainer ≥10% (${gainers.length} koin)</b>\n\n`;
+          gainers.slice(0, 20).forEach((g, i) => {
+            msg += `${i+1}. <b>${g.symbol}</b> +${g.change24h.toFixed(2)}% | $${(g.vol24h/1e6).toFixed(1)}M\n`;
+          });
+          if (gainers.length > 20) msg += `\n<i>...dan ${gainers.length - 20} lainnya</i>`;
+          msg += `\n\nGunakan /pipeline untuk cari BUY signal UTBot dari list ini.`;
+          reply(chatId, msg);
+        })
         .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
       break;
     }
 
     case '/utbot': {
-      await reply(chatId, '📡 UT Bot Alert screening dimulai (1H)...');
+      await reply(chatId, '📡 UT Bot Alert screening dimulai (1H, filter EMA21 1H)...');
       callbacks.doUTBotScreener?.()
         .then(signals => {
           const buySignals = signals?.filter(s => s.signal === 'BUY') ?? [];
           if (buySignals.length === 0) {
-            reply(chatId, '📡 UT Bot: tidak ada sinyal BUY saat ini.\n\n<i>Coba lagi di candle berikutnya atau tunggu notif otomatis setiap jam.</i>');
+            reply(chatId, '📡 UT Bot: tidak ada sinyal BUY saat ini.\n\n<i>Coba lagi di candle berikutnya.</i>');
           }
         })
+        .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
+      break;
+    }
+
+    case '/pipeline': {
+      await reply(chatId,
+        '🚀📡 <b>Gainer ≥10% → UT Bot Pipeline</b>\n\n' +
+        'Step 1: Cari koin naik ≥10% dalam 24h...\n' +
+        'Step 2: Scan UTBot BUY signal (filter EMA21 1H)...\n\n' +
+        '<i>Estimasi: 1-3 menit</i>'
+      );
+      callbacks.doGainerUTBotScreening?.()
+        .then(c => {
+          if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat dari pipeline Gainer+UTBot.');
+        })
+        .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
+      break;
+    }
+
+    case '/screen': {
+      await reply(chatId, '🔍 Menjalankan MTF + Gainer+UTBot pipeline...');
+      callbacks.doScreening?.()
+        .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat.'); })
         .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
       break;
     }
@@ -201,64 +202,34 @@ async function handleCommand(chatId, text, callbacks) {
       if (!arg) { await reply(chatId, '❓ Format: /analyze SYMBOL\nContoh: /analyze BTCUSDT'); break; }
       const aiSt = (() => { try { return getAIStatus(); } catch { return {enabled:false}; } })();
       if (!aiSt.enabled) {
-        await reply(chatId, '⚠️ AI Analyst belum aktif.\n\nTambahkan salah satu ke .env:\n• GEMINI_API_KEY (gratis di aistudio.google.com)\n• ANTHROPIC_API_KEY (console.anthropic.com)\n\nLalu set AI_PROVIDER=gemini atau AI_PROVIDER=claude');
+        await reply(chatId, '⚠️ AI Analyst belum aktif.\n\nTambahkan ke .env:\n• GEMINI_API_KEY\n• ANTHROPIC_API_KEY\n• OPENROUTER_API_KEY');
         break;
       }
       await reply(chatId,
         `🤖 <b>AI Analyst</b> — ${arg}\n\n` +
         `⏳ Mengambil data market 1D + 4H + 1H...\n` +
-        `🔍 Mencari sentimen dari web...\n` +
         `📊 Menjalankan analisa multi-timeframe...\n\n` +
-        `<i>Estimasi selesai: 30-60 detik</i>`
+        `<i>Estimasi: 30-60 detik</i>`
       );
       try {
         const analysis = await analyzeOnDemand(arg);
-
         if (!analysis) {
-          await reply(chatId, `⚠️ AI analisa untuk <b>${arg}</b> tidak tersedia saat ini.\n\nCek log bot untuk detail error.`);
+          await reply(chatId, `⚠️ AI analisa untuk <b>${arg}</b> tidak tersedia.\nCek log bot untuk detail error.`);
           break;
         }
-
-        // Bangun pesan AI report langsung dan kirim via reply ke chatId yang benar
         const { formatAIAnalysis } = await import('./telegram.js');
         const msg = formatAIAnalysis(arg, analysis);
-
-        // Fungsi kirim dengan fallback plain text jika HTML gagal
-        const safeReply = async (text) => {
-          const token = process.env.TELEGRAM_BOT_TOKEN;
-          const base  = `https://api.telegram.org/bot${token}`;
-
-          // Coba kirim dengan HTML dulu
+        const safeReply = async (t) => {
+          const base = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
           try {
-            const res  = await fetch(`${base}/sendMessage`, {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-            });
+            const res  = await fetch(`${base}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: t, parse_mode: 'HTML' }) });
             const data = await res.json();
-
-            // Jika Telegram reject karena HTML invalid
             if (!data.ok) {
-              log('telegram_error', `HTML send failed: ${data.description} — retry plain text`);
-              // Strip semua HTML tag dan karakter problematik
-              const plain = text
-                .replace(/<[^>]*>/g, '')      // hapus semua tag HTML
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&quot;/g, '"');
-              await fetch(`${base}/sendMessage`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ chat_id: chatId, text: plain }),
-              });
+              const plain = t.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+              await fetch(`${base}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: plain }) });
             }
-          } catch (err) {
-            log('telegram_error', `safeReply error: ${err.message}`);
-          }
+          } catch (err) { log('telegram_error', `safeReply: ${err.message}`); }
         };
-
-        // Split jika terlalu panjang (>4000 char)
         const LIMIT = 3500;
         if (msg.length <= LIMIT) {
           await safeReply(msg);
@@ -266,17 +237,11 @@ async function handleCommand(chatId, text, callbacks) {
           const lines = msg.split('\n');
           let chunk = '';
           for (const line of lines) {
-            if ((chunk + '\n' + line).length > LIMIT) {
-              await safeReply(chunk);
-              chunk = line;
-              await new Promise(r => setTimeout(r, 400));
-            } else {
-              chunk = chunk ? chunk + '\n' + line : line;
-            }
+            if ((chunk + '\n' + line).length > LIMIT) { await safeReply(chunk); chunk = line; await new Promise(r => setTimeout(r, 400)); }
+            else { chunk = chunk ? chunk + '\n' + line : line; }
           }
           if (chunk) await safeReply(chunk);
         }
-
       } catch (err) {
         await reply(chatId, `❌ Analisa gagal: ${err.message}`);
       }
@@ -286,16 +251,14 @@ async function handleCommand(chatId, text, callbacks) {
     // ── Approval ─────────────────────────────────────────────────────────────
     case '/approve': {
       if (!arg) { await reply(chatId, '❓ Format: /approve SYMBOL'); break; }
-      // Cek AI verdict dulu sebagai warning
       const q1    = callbacks.getPendingQueue();
       const item1 = q1.find(p => p.symbol === arg);
-      if (item1?.candidate?.aiAnalysis?.verdict === 'SKIP') {
-        await reply(chatId, `⚠️ AI Analyst merekomendasikan <b>SKIP</b> untuk ${arg}.\n\nAlasan: ${item1.candidate.aiAnalysis.summary}\n\nKetik /approve ${arg} lagi untuk override, atau /skip ${arg} untuk lewati.`);
-        // Tandai sudah diberi warning agar approve kedua langsung jalan
+      if (item1?.candidate?.aiAnalysis?.verdict === 'SKIP' && !item1._aiWarnShown) {
+        await reply(chatId, `⚠️ AI Analyst merekomendasikan <b>SKIP</b> untuk ${arg}.\n\nAlasan: ${item1.candidate.aiAnalysis.summary}\n\nKetik /approve ${arg} lagi untuk override.`);
         item1._aiWarnShown = true;
         break;
       }
-      await reply(chatId, `⏳ Approve Entry 1 (30%) — ${arg}...`);
+      await reply(chatId, `⏳ Approve Entry 1 (${config.trading.splitEntry?.portion1Pct ?? 55}%) — ${arg}...`);
       const res = await callbacks.approveCandidate(arg);
       await reply(chatId, res.ok ? `✅ <b>${arg}</b> Entry 1 dieksekusi!` : `❌ ${res.reason}`);
       break;
@@ -303,7 +266,7 @@ async function handleCommand(chatId, text, callbacks) {
 
     case '/approve2': {
       if (!arg) { await reply(chatId, '❓ Format: /approve2 SYMBOL'); break; }
-      await reply(chatId, `⏳ Approve Entry 2 (70% @ OB zone) — ${arg}...`);
+      await reply(chatId, `⏳ Approve Entry 2 (${config.trading.splitEntry?.portion2Pct ?? 45}%) — ${arg}...`);
       try {
         const res = await callbacks.approveEntry2(arg);
         await reply(chatId, res.ok ? `✅ <b>${arg}</b> Entry 2 dieksekusi!` : `❌ ${res.reason}`);
@@ -336,14 +299,11 @@ async function handleCommand(chatId, text, callbacks) {
         const trig  = p.candidate.triggered ? '⚡ <b>TRIGGERED</b>' : '⏳ pre-alert';
         const ai    = p.candidate.aiAnalysis;
         const aiStr = ai ? `\n   🤖 AI: <b>${ai.verdict}</b> (${ai.confidence}%) — ${ai.summary?.slice(0, 80)}...` : '';
-        const z1    = p.candidate.entryZone1;
-        const z2    = p.candidate.entryZone2;
-        const chg   = p.candidate.change24h >= 0 ? `+${p.candidate.change24h.toFixed(2)}` : p.candidate.change24h.toFixed(2);
+        const stratIcon = p.candidate.strategy === 'gainerUTBot' ? '🚀📡' : p.candidate.strategy === 'utbot' ? '📡' : '🧠';
+        const chg   = p.candidate.change24h >= 0 ? `+${p.candidate.change24h?.toFixed(2)}` : p.candidate.change24h?.toFixed(2);
 
-        msg += `🧠 <b>${p.symbol}</b> (${chg}%) [${trig}]${aiStr}\n`;
+        msg += `${stratIcon} <b>${p.symbol}</b> (${chg}%) [${trig}]${aiStr}\n`;
         msg += `   Sisa: ${p.minsLeft} menit\n`;
-        if (z1) msg += `   Zone 1 (30%): ${z1.label}\n`;
-        if (z2) msg += `   Zone 2 (70%): ${z2.label}\n`;
         if (p.candidate.slPrice) msg += `   SL: ${p.candidate.slPrice.toFixed(6)}\n`;
         msg += `   /approve ${p.symbol} | /approve2 ${p.symbol} | /approveall ${p.symbol}\n`;
         msg += `   /analyze ${p.symbol} | /skip ${p.symbol}\n\n`;
@@ -407,20 +367,19 @@ async function handleCommand(chatId, text, callbacks) {
     case '/help':
     default: {
       await reply(chatId,
-        `🤖 <b>Bot v3.1 — MTF Smart Money + AI</b>\n\n` +
+        `🤖 <b>Bot v3.2 — MTF + Gainer UTBot Pipeline</b>\n\n` +
         `<b>📡 Screening:</b>\n` +
-        `/mtf             — MTF Smart Money (utama)\n` +
-        `/utbot           — UT Bot Alert 1H (ATR trailing stop)\n` +
-        `/gainer          — Daily Gainer (candle hijau + breakout)\n` +
-        `/trend           — Trend Following\n` +
-        `/reversal        — Reversal Hunter\n` +
-        `/screen          — Semua screener\n\n` +
+        `/mtf             — MTF Smart Money (1D+4H+1H)\n` +
+        `/gainer          — Tampilkan koin naik ≥10% hari ini\n` +
+        `/pipeline        — Gainer ≥10% → UTBot BUY signal (utama)\n` +
+        `/utbot           — UTBot standalone (semua koin)\n` +
+        `/screen          — Jalankan MTF + Pipeline sekaligus\n\n` +
         `<b>🤖 AI Analyst:</b>\n` +
         `/analyze SYMBOL  — Analisa AI lengkap on-demand\n\n` +
         `<b>✅ Approval Split Entry:</b>\n` +
         `/pending               — Kandidat pending\n` +
-        `/approve SYMBOL        — Entry 1 (30% @ EMA21)\n` +
-        `/approve2 SYMBOL       — Entry 2 (70% @ OB)\n` +
+        `/approve SYMBOL        — Entry 1 (55%)\n` +
+        `/approve2 SYMBOL       — Entry 2 (45%)\n` +
         `/approveall SYMBOL     — Full position (100%)\n` +
         `/skip SYMBOL           — Lewati\n\n` +
         `<b>💰 Trading Manual:</b>\n` +
@@ -442,7 +401,7 @@ export function startTelegramPolling(callbacks) {
   if (!getToken() || !getChatId()) { log('telegram', 'Telegram tidak dikonfigurasi'); return; }
   if (_polling) return;
   _polling = true;
-  log('telegram', '✅ Telegram polling aktif (v3.1 MTF + AI)');
+  log('telegram', '✅ Telegram polling aktif (v3.2 Gainer+UTBot)');
 
   async function poll() {
     if (!_polling) return;

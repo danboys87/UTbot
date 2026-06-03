@@ -5,9 +5,8 @@
  *  1. Hitung ATR periode N (default 10) pada candle 1H
  *  2. Bangun ATR Trailing Stop dengan multiplier keyValue (default 2)
  *  3. Deteksi BUY signal: close cross ke atas trailing stop
- *  4. Deteksi SELL signal: close cross ke bawah trailing stop
- *  5. Filter tambahan: hanya BUY kalau 1D trend bullish (price > EMA21 1D)
- *  6. Kirim notif Telegram → masuk Approval Queue (Opsi B)
+ *  4. Filter: harga close > EMA21 pada timeframe 1H (bukan 1D)
+ *  5. Bisa dijalankan standalone atau via pipeline gainer
  *
  * Setting di user-config.json:
  *  "utbot": {
@@ -17,16 +16,16 @@
  *    "timeframe": "1h",
  *    "checkIntervalMin": 60,
  *    "minVolume24h": 2000000,
- *    "filter1D": true,
+ *    "filter1H_EMA21": true,
  *    "maxSignalsPerRun": 5
  *  }
  */
 
 import { getCandles, getAllTickers } from './bitget.js';
-import { calcUTBot, calcEMA }       from './indicators.js';
-import { config }                   from './config.js';
-import { log }                      from './logger.js';
-import { hasPosition }              from './state.js';
+import { calcUTBot, calcEMA }        from './indicators.js';
+import { config }                    from './config.js';
+import { log }                       from './logger.js';
+import { hasPosition }               from './state.js';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -38,27 +37,31 @@ function signalKey(symbol, signal, timestamp) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cek 1D trend — price > EMA21 1D
+// Cek 1H trend — price > EMA21 1H
 // ─────────────────────────────────────────────────────────────────────────────
-async function is1DBullish(symbol) {
+async function is1HBullish(symbol) {
   try {
-    const raw1D = await getCandles(symbol, '1day', 62);
-    if (!Array.isArray(raw1D) || raw1D.length < 25) return true;
+    const raw1H = await getCandles(symbol, '1h', 60);
+    if (!Array.isArray(raw1H) || raw1H.length < 25) return true; // default lolos jika data kurang
 
     const now         = Date.now();
-    const periodMs    = 86400000;
+    const periodMs    = 3600000;
     const periodStart = now - (now % periodMs);
-    const closed      = raw1D
+    const closed      = raw1H
       .filter(c => parseInt(c[0]) < periodStart)
       .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
 
     if (closed.length < 22) return true;
-    const closes  = closed.map(c => parseFloat(c[4]));
-    const ema21   = calcEMA(closes, 21);
+
+    const closes    = closed.map(c => parseFloat(c[4]));
+    const ema21     = calcEMA(closes, 21);
     const lastClose = closes[closes.length - 1];
-    return ema21 ? lastClose > ema21 : true;
+
+    const bullish = ema21 ? lastClose > ema21 : true;
+    log('utbot', `  [1H EMA21] ${symbol}: close=${lastClose?.toFixed(6)} EMA21=${ema21?.toFixed(6)} → ${bullish ? '✅ BULLISH' : '❌ BEARISH'}`);
+    return bullish;
   } catch {
-    return true;
+    return true; // default lolos jika error
   }
 }
 
@@ -66,7 +69,7 @@ async function is1DBullish(symbol) {
 // Scan satu symbol — return result + data untuk approval queue
 // ─────────────────────────────────────────────────────────────────────────────
 async function scanSymbol(symbol, cfg) {
-  const { keyValue, atrPeriod, filter1D } = cfg;
+  const { keyValue, atrPeriod, filter1H_EMA21 } = cfg;
 
   try {
     const raw1H = await getCandles(symbol, '1h', Math.max(atrPeriod * 3 + 20, 60));
@@ -89,15 +92,18 @@ async function scanSymbol(symbol, cfg) {
     const result = calcUTBot(highs, lows, closes, keyValue, atrPeriod);
     if (!result || !result.signal) return null;
 
+    // Hanya proses BUY signal
+    if (result.signal !== 'BUY') return null;
+
     // Cek duplikat sinyal
     const key = signalKey(symbol, result.signal, lastTs);
     if (_sentSignals.has(key)) return null;
 
-    // Filter 1D bullish untuk BUY signal
-    if (result.signal === 'BUY' && filter1D) {
-      const bullish = await is1DBullish(symbol);
-      if (!bullish) {
-        log('utbot', `  ${symbol} BUY signal tapi 1D bearish → difilter`);
+    // Filter EMA21 1H untuk BUY signal
+    if (filter1H_EMA21 !== false) {
+      const bullish1H = await is1HBullish(symbol);
+      if (!bullish1H) {
+        log('utbot', `  ${symbol} BUY signal tapi 1H bearish (close < EMA21 1H) → difilter`);
         return null;
       }
     }
@@ -112,14 +118,10 @@ async function scanSymbol(symbol, cfg) {
     }
 
     // ── Hitung SL & zone entry untuk approval queue ───────────────────────
-    // SL: di bawah trailing stop saat ini dengan buffer 0.3%
     const slBuffer = config.management?.slBuffer ?? 0.005;
     const slPrice  = result.trailingStop * (1 - slBuffer);
+    const low20    = Math.min(...lows.slice(-20));
 
-    // Ambil low 20 candle terakhir sebagai referensi support
-    const low20 = Math.min(...lows.slice(-20));
-
-    // Zone entry: sekitar harga close sekarang (UT Bot entry di breakout trailing stop)
     const entryZone = {
       type:        'UTBot',
       entryPct:    100,
@@ -127,6 +129,9 @@ async function scanSymbol(symbol, cfg) {
       priceBottom: result.trailingStop,
       label:       `UT Bot zone ${result.trailingStop.toFixed(6)} - ${(result.close * 1.005).toFixed(6)}`,
     };
+
+    // EMA21 1H untuk info
+    const ema21_1H = calcEMA(closes, 21);
 
     return {
       symbol,
@@ -137,32 +142,32 @@ async function scanSymbol(symbol, cfg) {
       nLoss:        result.nLoss,
       candleTs:     lastTs,
 
-      // Data tambahan untuk approval queue
       lastPrice:    result.close,
       slPrice,
       zones:        [entryZone],
       strategy:     'utbot',
-      triggered:    true,   // UTBot signal = langsung triggered
+      triggered:    true,
       signals: {
         utbotSignal: {
-          bullish: result.signal === 'BUY',
+          bullish: true,
           label:   `UT Bot BUY — close ${result.close} cross above trailing stop ${result.trailingStop.toFixed(6)}`,
         },
         atrTrailing: {
           bullish: true,
           label:   `ATR=${result.atr.toFixed(6)} | nLoss=${result.nLoss.toFixed(6)} | keyValue=${keyValue}`,
         },
-        trend1D: {
+        ema21_1H: {
           bullish: true,
-          label:   `1D trend bullish (price > EMA21 1D)`,
+          label:   ema21_1H ? `Close ${result.close.toFixed(6)} > EMA21 1H ${ema21_1H.toFixed(6)} ✅` : 'EMA21 1H: data kurang',
         },
         support: {
           bullish: true,
           label:   `Low20 1H = ${low20.toFixed(6)} | SL ref = ${result.trailingStop.toFixed(6)}`,
         },
       },
+      ema21_1H,
       matchCount: 3,
-      score: 50,   // base score untuk UTBot
+      score: 50,
     };
 
   } catch (err) {
@@ -172,51 +177,60 @@ async function scanSymbol(symbol, cfg) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main run
+// Main run — bisa terima daftar symbol spesifik (dari gainer pipeline)
+// atau scan semua tickers
 // ─────────────────────────────────────────────────────────────────────────────
-export async function runUTBotScreener(tickers) {
+export async function runUTBotScreener(tickersOrSymbols, opts = {}) {
   const utCfg = config.screening?.utbot ?? {};
-  if (!utCfg.enabled) {
-    log('utbot', 'UT Bot screener tidak aktif (set utbot.enabled: true di config)');
-    return [];
+
+  const keyValue       = utCfg.keyValue       ?? 2;
+  const atrPeriod      = utCfg.atrPeriod      ?? 10;
+  const filter1H_EMA21 = utCfg.filter1H_EMA21 !== false; // default true
+  const minVol         = utCfg.minVolume24h   ?? config.screening?.minVolume24h ?? 2_000_000;
+  const maxSignals     = opts.maxSignals       ?? utCfg.maxSignalsPerRun ?? 5;
+  const quoteAsset     = config.trading.quoteAsset || 'USDT';
+  const whitelist      = config.whitelist ?? [];
+
+  const fromGainer     = opts.fromGainer ?? false; // jika true, input sudah filtered gainer
+
+  log('utbot', `══ UT Bot Alert Screener (1H | key=${keyValue} atr=${atrPeriod} | EMA21-1H filter: ${filter1H_EMA21 ? 'ON' : 'OFF'}) ══`);
+
+  let filtered;
+
+  if (fromGainer && Array.isArray(tickersOrSymbols)) {
+    // Input dari gainer pipeline: sudah berupa array { symbol, change24h, lastPrice, vol24h }
+    filtered = tickersOrSymbols.filter(t => !hasPosition(t.symbol));
+    log('utbot', `Dari gainer pipeline: ${filtered.length} koin`);
+  } else {
+    // Standalone mode: ambil dari tickers lengkap
+    const tickers = Array.isArray(tickersOrSymbols) ? tickersOrSymbols : [];
+    filtered = tickers
+      .filter(t => {
+        if (!t.symbol.endsWith(quoteAsset))           return false;
+        if (config.blacklist?.includes(t.symbol))     return false;
+        if (parseFloat(t.usdtVol || t.quoteVolume || 0) < minVol) return false;
+        if (whitelist.length > 0 && !whitelist.includes(t.symbol)) return false;
+        return true;
+      })
+      .sort((a, b) => parseFloat(b.usdtVol || 0) - parseFloat(a.usdtVol || 0));
   }
 
-  const keyValue     = utCfg.keyValue     ?? 2;
-  const atrPeriod    = utCfg.atrPeriod    ?? 10;
-  const filter1D     = utCfg.filter1D     ?? true;
-  const minVol       = utCfg.minVolume24h ?? config.screening?.minVolume24h ?? 2000000;
-  const maxSignals   = utCfg.maxSignalsPerRun ?? 5;
-  const quoteAsset   = config.trading.quoteAsset || 'USDT';
-  const whitelist    = config.whitelist ?? [];
-
-  log('utbot', `══ UT Bot Alert Screener (1H | key=${keyValue} atr=${atrPeriod}) ══`);
-
-  const filtered = (tickers || [])
-    .filter(t => {
-      if (!t.symbol.endsWith(quoteAsset))    return false;
-      if (config.blacklist?.includes(t.symbol)) return false;
-      if (parseFloat(t.usdtVol || t.quoteVolume || 0) < minVol) return false;
-      if (whitelist.length > 0 && !whitelist.includes(t.symbol)) return false;
-      return true;
-    })
-    .sort((a, b) => parseFloat(b.usdtVol || 0) - parseFloat(a.usdtVol || 0));
-
-  log('utbot', `Scanning ${filtered.length} koin...`);
+  log('utbot', `Scanning ${filtered.length} koin untuk BUY signal...`);
 
   const signals = [];
 
   for (let i = 0; i < filtered.length; i++) {
     const coin = filtered[i];
 
-    const result = await scanSymbol(coin.symbol, { keyValue, atrPeriod, filter1D });
+    const result = await scanSymbol(coin.symbol, { keyValue, atrPeriod, filter1H_EMA21 });
 
     if (result) {
       const hasPos = hasPosition(result.symbol);
       result.hasPosition = hasPos;
-      result.vol24h      = parseFloat(coin.usdtVol || coin.quoteVolume || 0);
-      result.change24h   = parseFloat(coin.change24h || 0);
+      result.vol24h      = coin.vol24h    ?? parseFloat(coin.usdtVol || coin.quoteVolume || 0);
+      result.change24h   = coin.change24h ?? parseFloat(coin.change24h || 0);
 
-      log('utbot', `  🔔 ${result.signal} signal: ${result.symbol} @ ${result.close} | TS=${result.trailingStop.toFixed(6)} | ATR=${result.atr.toFixed(6)}${hasPos ? ' [SUDAH POSISI]' : ''}`);
+      log('utbot', `  🔔 BUY: ${result.symbol} @ ${result.close} | TS=${result.trailingStop.toFixed(6)} | ATR=${result.atr.toFixed(6)}${hasPos ? ' [POSISI OPEN]' : ''} | 24h: +${result.change24h.toFixed(2)}%`);
       signals.push(result);
 
       if (signals.length >= maxSignals) {
@@ -229,6 +243,6 @@ export async function runUTBotScreener(tickers) {
     else await sleep(150);
   }
 
-  log('utbot', `UT Bot selesai → ${signals.length} sinyal (${signals.filter(s=>s.signal==='BUY').length} BUY, ${signals.filter(s=>s.signal==='SELL').length} SELL)`);
+  log('utbot', `UT Bot selesai → ${signals.length} BUY signal`);
   return signals;
 }

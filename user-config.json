@@ -15,6 +15,12 @@
   "whitelist": [],
   "screening": {
     "minVolume24h": 2000000,
+    "gainer": {
+      "minGainPct": 10,
+      "maxGainPct": 200,
+      "minVolume24h": 2000000,
+      "checkLimit": 300
+    },
     "mtf": {
       "minVolume24h": 2000000,
       "topCandidatesLimit": 3,
@@ -43,7 +49,7 @@
       "timeframe": "1h",
       "checkIntervalMin": 60,
       "minVolume24h": 2000000,
-      "filter1D": false,
+      "filter1H_EMA21": true,
       "maxSignalsPerRun": 5
     }
   },
