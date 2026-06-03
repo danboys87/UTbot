@@ -43,12 +43,12 @@
       "timeframe": "1h",
       "checkIntervalMin": 60,
       "minVolume24h": 2000000,
-      "filter1D": true,
+      "filter1D": false,
       "maxSignalsPerRun": 5
     }
   },
   "management": {
-    "stopLossPct": -4,
+    "stopLossPct": -5,
     "slBuffer": 0.005,
     "minRiskReward": 2,
     "tp1": {
