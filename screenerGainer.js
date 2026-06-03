@@ -1,9 +1,9 @@
 /**
- * Screener — Daily Gainer ≥10%
- * Mencari koin spot Bitget yang naik minimal 10% dalam 24 jam.
+ * Screener — Daily Gainer ≥5%
+ * Mencari koin spot Bitget yang naik minimal 5% dalam 24 jam.
  *
  * Kriteria:
- *  1. Perubahan harga 24h >= minGainPct (default 10%)
+ *  1. Perubahan harga 24h >= minGainPct (default 5%)
  *  2. Volume 24h >= minVolume24h
  *  3. Belum punya posisi terbuka
  *  4. Tidak di-blacklist
@@ -20,7 +20,7 @@ export async function runGainerScreening() {
   const sc         = config.screening;
   const gainer     = sc.gainer ?? {};
   const quoteAsset = config.trading.quoteAsset || 'USDT';
-  const minGainPct = gainer.minGainPct   ?? 10;
+  const minGainPct = gainer.minGainPct   ?? 5;
   const minVolUsdt = gainer.minVolume24h ?? sc.minVolume24h ?? 2_000_000;
   const maxGainPct = gainer.maxGainPct   ?? 200; // filter pump ekstrem
   const limit      = gainer.checkLimit   ?? 300;

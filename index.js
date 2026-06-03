@@ -4,7 +4,7 @@
  *
  * Screener aktif:
  *  1. MTF Smart Money (cron 07:30 / 13:00 / 19:00 WIB)
- *  2. Gainer ≥10% → UT Bot Alert pipeline (cron per jam atau manual)
+ *  2. Gainer ≥5% → UT Bot Alert pipeline (cron per jam atau manual)
  */
 
 import { createRequire } from 'module';
@@ -169,11 +169,11 @@ export async function doGainerUTBotScreening() {
       return [];
     }
 
-    log('screener', '🚀📡 Menjalankan Gainer ≥10% → UT Bot Pipeline...');
+    log('screener', '🚀📡 Menjalankan Gainer ≥5% → UT Bot Pipeline...');
     const candidates = await runGainerUTBotPipeline();
 
     if (!candidates.length) {
-      await notifyScreening({ found: 0, total: 0, symbols: [], strategy: 'Gainer ≥10% + UT Bot' });
+      await notifyScreening({ found: 0, total: 0, symbols: [], strategy: 'Gainer ≥5% + UT Bot' });
       return [];
     }
 
@@ -181,7 +181,7 @@ export async function doGainerUTBotScreening() {
       found:    candidates.length,
       total:    0,
       symbols:  candidates.map(c => c.symbol),
-      strategy: 'Gainer ≥10% + UT Bot',
+      strategy: 'Gainer ≥5% + UT Bot',
     });
 
     const eligible   = candidates.filter(c => !c.hasPosition).slice(0, slotLeft);
@@ -259,7 +259,7 @@ export async function doGainerScreening() {
   _screenBusy = true;
   try {
     const gainers = await runGainerScreening();
-    await notifyScreening({ found: gainers.length, total: 0, symbols: gainers.map(g => g.symbol), strategy: 'Gainer ≥10% (list)' });
+    await notifyScreening({ found: gainers.length, total: 0, symbols: gainers.map(g => g.symbol), strategy: 'Gainer ≥5% (list)' });
     return gainers;
   } catch (err) {
     log('cron_error', `Gainer error: ${err.message}`);
@@ -331,7 +331,7 @@ export { approveCandidate, skipCandidate, getPendingQueue };
 function startCron() {
   stopCron();
 
-  const manageMin   = config.schedule?.managementIntervalMin    ?? 10;
+  const manageMin   = config.schedule?.managementIntervalMin    ?? 5;
   const preAlertMin = config.schedule?.preAlertRecheckMin       ?? 60;
   const utbotMin    = config.screening?.utbot?.checkIntervalMin ?? 60;
   const mtfCron     = config.schedule?.mtfCron  || '30 0 * * *';
@@ -446,9 +446,9 @@ function startREPL() {
           '',
           '  status   — posisi terbuka & PnL',
           '  mtf      — jalankan MTF Smart Money screener',
-          '  gainer   — tampilkan koin gainer ≥10%',
+          '  gainer   — tampilkan koin gainer ≥5%',
           '  utbot    — UT Bot Alert screener standalone',
-          '  pipeline — Gainer ≥10% → UTBot (pipeline utama)',
+          '  pipeline — Gainer ≥5% → UTBot (pipeline utama)',
           '  screen   — MTF + Pipeline sekaligus',
           '  manage   — cek TP/SL semua posisi',
           '  stats    — kirim ringkasan ke Telegram',
@@ -486,14 +486,14 @@ async function main() {
   const cfg         = config;
   const pct1        = cfg.trading.splitEntry?.portion1Pct ?? 55;
   const pct2        = cfg.trading.splitEntry?.portion2Pct ?? 45;
-  const manageMin   = cfg.schedule?.managementIntervalMin ?? 10;
+  const manageMin   = cfg.schedule?.managementIntervalMin ?? 5;
   const preAlertMin = cfg.schedule?.preAlertRecheckMin    ?? 60;
   const utbotMin    = cfg.screening?.utbot?.checkIntervalMin ?? 60;
 
   log('startup', `Config:`);
   log('startup', `  Budget/trade : ${cfg.trading.budgetPerTrade} USDT (E1 ${pct1}%: ${(cfg.trading.budgetPerTrade * pct1 / 100).toFixed(0)}, E2 ${pct2}%: ${(cfg.trading.budgetPerTrade * pct2 / 100).toFixed(0)})`);
   log('startup', `  Max posisi   : ${cfg.trading.maxOpenPositions}`);
-  log('startup', `  Min gainer   : ${cfg.screening?.gainer?.minGainPct ?? 10}%`);
+  log('startup', `  Min gainer   : ${cfg.screening?.gainer?.minGainPct ?? 5}%`);
   log('startup', `Jadwal:`);
   log('startup', `  MTF          : 07:30 / 13:00 / 19:00 WIB`);
   log('startup', `  Gainer+UTBot : setiap ${utbotMin} menit`);

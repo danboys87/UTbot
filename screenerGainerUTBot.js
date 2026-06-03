@@ -1,8 +1,8 @@
 /**
- * Pipeline: Daily Gainer ≥10% → UT Bot Alert (1H)
+ * Pipeline: Daily Gainer ≥5% → UT Bot Alert (1H)
  *
  * Alur:
- *  1. Ambil semua koin yang naik ≥10% dalam 24h (dari runGainerScreening)
+ *  1. Ambil semua koin yang naik ≥5% dalam 24h (dari runGainerScreening)
  *  2. Dari koin-koin tersebut, cari yang punya BUY signal UT Bot di 1H
  *     dengan konfirmasi close > EMA21 1H
  *  3. Hasilnya: kandidat kuat — sudah momentum (gainer) + entry timing bagus (UTBot)
@@ -13,13 +13,13 @@ import { runUTBotScreener }   from './screenerUTBot.js';
 import { log }                from './logger.js';
 
 export async function runGainerUTBotPipeline() {
-  log('screener', '══ Gainer ≥10% → UT Bot Pipeline dimulai ══');
+  log('screener', '══ Gainer ≥5% → UT Bot Pipeline dimulai ══');
 
-  // Step 1: Ambil gainer ≥10%
+  // Step 1: Ambil gainer ≥5%
   const gainers = await runGainerScreening();
 
   if (!gainers.length) {
-    log('screener', 'Pipeline: tidak ada gainer ≥10%, pipeline berhenti.');
+    log('screener', 'Pipeline: tidak ada gainer ≥5%, pipeline berhenti.');
     return [];
   }
 

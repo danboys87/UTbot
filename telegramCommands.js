@@ -3,8 +3,8 @@
  *
  * Perubahan v3.2:
  *   - Hapus /trend dan /reversal
- *   - /gainer   — tampilkan list koin gainer ≥10%
- *   - /pipeline — jalankan Gainer ≥10% → UTBot pipeline
+ *   - /gainer   — tampilkan list koin gainer ≥5%
+ *   - /pipeline — jalankan Gainer ≥5% → UTBot pipeline
  *   - /utbot    — UT Bot Alert standalone (semua koin)
  *   - /mtf      — MTF Smart Money screener
  */
@@ -142,14 +142,14 @@ async function handleCommand(chatId, text, callbacks) {
     }
 
     case '/gainer': {
-      await reply(chatId, '🚀 Mengambil daftar Gainer ≥10%...');
+      await reply(chatId, '🚀 Mengambil daftar Gainer ≥5%...');
       callbacks.doGainerScreening?.()
         .then(gainers => {
           if (!gainers?.length) {
-            reply(chatId, '⚠️ Tidak ada koin gainer ≥10% saat ini.');
+            reply(chatId, '⚠️ Tidak ada koin gainer ≥5% saat ini.');
             return;
           }
-          let msg = `🚀 <b>Gainer ≥10% (${gainers.length} koin)</b>\n\n`;
+          let msg = `🚀 <b>Gainer ≥5% (${gainers.length} koin)</b>\n\n`;
           gainers.slice(0, 20).forEach((g, i) => {
             msg += `${i+1}. <b>${g.symbol}</b> +${g.change24h.toFixed(2)}% | $${(g.vol24h/1e6).toFixed(1)}M\n`;
           });
@@ -176,8 +176,8 @@ async function handleCommand(chatId, text, callbacks) {
 
     case '/pipeline': {
       await reply(chatId,
-        '🚀📡 <b>Gainer ≥10% → UT Bot Pipeline</b>\n\n' +
-        'Step 1: Cari koin naik ≥10% dalam 24h...\n' +
+        '🚀📡 <b>Gainer ≥5% → UT Bot Pipeline</b>\n\n' +
+        'Step 1: Cari koin naik ≥5% dalam 24h...\n' +
         'Step 2: Scan UTBot BUY signal (filter EMA21 1H)...\n\n' +
         '<i>Estimasi: 1-3 menit</i>'
       );
@@ -370,8 +370,8 @@ async function handleCommand(chatId, text, callbacks) {
         `🤖 <b>Bot v3.2 — MTF + Gainer UTBot Pipeline</b>\n\n` +
         `<b>📡 Screening:</b>\n` +
         `/mtf             — MTF Smart Money (1D+4H+1H)\n` +
-        `/gainer          — Tampilkan koin naik ≥10% hari ini\n` +
-        `/pipeline        — Gainer ≥10% → UTBot BUY signal (utama)\n` +
+        `/gainer          — Tampilkan koin naik ≥5% hari ini\n` +
+        `/pipeline        — Gainer ≥5% → UTBot BUY signal (utama)\n` +
         `/utbot           — UTBot standalone (semua koin)\n` +
         `/screen          — Jalankan MTF + Pipeline sekaligus\n\n` +
         `<b>🤖 AI Analyst:</b>\n` +
