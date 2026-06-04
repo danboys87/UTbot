@@ -14,33 +14,12 @@
   },
   "whitelist": [],
   "screening": {
-    "minVolume24h": 2000000,
+    "minVolume24h": 5000000,
     "gainer": {
       "minGainPct": 5,
-      "maxGainPct": 200,
-      "minVolume24h": 2000000,
+      "maxGainPct": 20,
+      "minVolume24h": 5000000,
       "checkLimit": 300
-    },
-    "mtf": {
-      "minVolume24h": 2000000,
-      "topCandidatesLimit": 3,
-      "checkLimit": 150,
-      "maxEMA21DistPct": 8,
-      "orderBlock": {
-        "impulseBodyMultiplier": 1.5,
-        "lookbackCandles": 5,
-        "maxAgeCandles": 30
-      },
-      "structure": {
-        "swingLookback": 3,
-        "bosLookback": 20
-      },
-      "trigger1H": {
-        "pinbarLowerWickRatio": 2.0,
-        "pinbarUpperWickRatio": 0.5,
-        "engulfingEnabled": true,
-        "choChEnabled": true
-      }
     },
     "utbot": {
       "enabled": true,
@@ -48,7 +27,7 @@
       "atrPeriod": 10,
       "timeframe": "1h",
       "checkIntervalMin": 60,
-      "minVolume24h": 2000000,
+      "minVolume24h": 5000000,
       "filter1H_EMA21": true,
       "maxSignalsPerRun": 5
     }
@@ -70,9 +49,6 @@
     "maxHoldHours": 72
   },
   "schedule": {
-    "mtfCron": "30 0 * * *",
-    "mtfCron2": "0 6 * * *",
-    "mtfCron3": "0 12 * * *",
     "managementIntervalMin": 10,
     "preAlertRecheckMin": 60
   },
