@@ -1,23 +1,6 @@
 /**
  * API Server — Dashboard REST Endpoints
  * Dijalankan bersamaan dengan bot (port terpisah, default 3000)
- *
- * Endpoints:
- *  POST /webhook/tradingview — auto-execute dari TradingView alert
- *  GET  /api/status          — stats + posisi terbuka + pending queue
- *  GET  /api/positions        — semua posisi terbuka dengan PnL live
- *  GET  /api/history          — closed trades
- *  GET  /api/pending          — approval queue
- *  POST /api/approve          — approve kandidat (entry1/entry2/all)
- *  POST /api/skip             — skip kandidat
- *  POST /api/buy              — manual buy
- *  POST /api/sell             — manual sell
- *  POST /api/screen           — trigger screening
- *  POST /api/analyze          — trigger AI analisa
- *  GET  /api/config           — baca config
- *  POST /api/config           — update config
- *  GET  /api/logs             — log terbaru (tail)
- *  GET  /api/price/:symbol    — harga live
  */
 
 import http   from 'http';
@@ -35,13 +18,11 @@ import { analyzeOnDemand, getAIStatus, isAIEnabled } from './aiAnalyst.js';
 
 const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const PORT       = parseInt(process.env.DASHBOARD_PORT || '3000');
-const API_SECRET = process.env.DASHBOARD_SECRET || '';   // opsional: simple auth
+const API_SECRET = process.env.DASHBOARD_SECRET || '';
 
-// ── Callbacks dari index.js ───────────────────────────────────────────────────
 let _callbacks = {};
 export function setApiCallbacks(cb) { _callbacks = cb; }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function json(res, data, status = 200) {
   res.writeHead(status, {
     'Content-Type':                'application/json',
@@ -73,7 +54,6 @@ function checkAuth(req) {
   return req.headers['x-secret'] === API_SECRET;
 }
 
-// Tail log file
 function tailLog(lines = 100) {
   try {
     const today   = new Date().toISOString().slice(0, 10);
@@ -84,11 +64,9 @@ function tailLog(lines = 100) {
   } catch { return []; }
 }
 
-// Baca closed trades
 function getClosedTrades() {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const dir   = path.join(__dirname, 'logs');
+    const dir = path.join(__dirname, 'logs');
     if (!fs.existsSync(dir)) return [];
     const files = fs.readdirSync(dir).filter(f => f.startsWith('trades-') && f.endsWith('.jsonl')).sort().reverse();
     const trades = [];
@@ -102,19 +80,16 @@ function getClosedTrades() {
   } catch { return []; }
 }
 
-// ── Route handler ─────────────────────────────────────────────────────────────
 async function handle(req, res) {
   const url    = new URL(req.url, `http://localhost:${PORT}`);
   const route  = url.pathname;
   const method = req.method;
 
-  // CORS preflight
   if (method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,X-Secret' });
     res.end(); return;
   }
 
-  // Auth check untuk POST
   if (method === 'POST' && !checkAuth(req)) {
     err(res, 'Unauthorized', 401); return;
   }
@@ -125,7 +100,6 @@ async function handle(req, res) {
     const positions = getAllPositions();
     const pending   = _callbacks.getPendingQueue?.() ?? [];
 
-    // Enrich positions dengan live price
     const enriched = {};
     for (const [sym, pos] of Object.entries(positions)) {
       const price = await getCurrentPrice(sym).catch(() => null);
@@ -213,7 +187,7 @@ async function handle(req, res) {
     if (!symbol) { err(res, 'symbol required'); return; }
     try {
       let result;
-      if (type === 'entry2')  result = await _callbacks.approveEntry2?.(symbol);
+      if (type === 'entry2')   result = await _callbacks.approveEntry2?.(symbol);
       else if (type === 'all') result = await _callbacks.approveAll?.(symbol);
       else                     result = await _callbacks.approveCandidate?.(symbol);
       json(res, result ?? { ok: false, error: 'Callback tidak tersedia' });
@@ -256,13 +230,10 @@ async function handle(req, res) {
 
   // ── POST /api/screen ───────────────────────────────────────────────────────
   if (route === '/api/screen' && method === 'POST') {
-    const { type = 'mtf' } = await readBody(req);
+    const { type = 'pipeline' } = await readBody(req);
     json(res, { ok: true, message: `Screening ${type} dimulai di background` });
-    // Jalankan async tanpa await agar response langsung balik
-    if (type === 'mtf')      _callbacks.doMTFScreening?.().catch(() => {});
-    else if (type === 'trend')    _callbacks.doTrendScreening?.().catch(() => {});
-    else if (type === 'reversal') _callbacks.doReversalScreening?.().catch(() => {});
-    else                          _callbacks.doScreening?.().catch(() => {});
+    if (type === 'utbot') _callbacks.doUTBotScreener?.().catch(() => {});
+    else                  _callbacks.doGainerUTBotScreening?.().catch(() => {});
     return;
   }
 
@@ -286,11 +257,7 @@ async function handle(req, res) {
   }
 
   // ── POST /webhook/tradingview ──────────────────────────────────────────────
-  // Auto-execute dari TradingView alert (tanpa approval)
-  // Validasi: header X-Webhook-Secret atau query ?secret=xxx
-  // Payload: { ticker, action, price, time, strategy, volume }
   if (route === '/webhook/tradingview' && method === 'POST') {
-    // Cek secret — ambil dari env WEBHOOK_SECRET
     const webhookSecret = process.env.WEBHOOK_SECRET || '';
     if (webhookSecret) {
       const headerSecret = req.headers['x-webhook-secret'];
@@ -315,9 +282,7 @@ async function handle(req, res) {
 
     log('webhook', `📡 TradingView signal: ${actionUp} ${symbol} @ ${price} | strategy=${strategy || '-'}`);
 
-    // ── BUY signal ────────────────────────────────────────────────────────────
     if (actionUp === 'BUY') {
-      // Cek slot posisi
       const openPos = getOpenSymbols();
       const maxPos  = config.trading.maxOpenPositions;
 
@@ -325,7 +290,6 @@ async function handle(req, res) {
         const msg = `⚠️ Sudah ada posisi ${symbol}, skip BUY signal`;
         log('webhook', msg);
         json(res, { ok: false, reason: msg });
-        // Kirim notif Telegram
         _callbacks.notifyWebhook?.({ symbol, action: 'BUY', price, strategy, skipped: true, reason: 'already_open' });
         return;
       }
@@ -338,7 +302,6 @@ async function handle(req, res) {
         return;
       }
 
-      // Auto-execute buy
       json(res, { ok: true, message: `BUY ${symbol} dieksekusi` });
       _callbacks.executeWebhookBuy?.({ symbol, price, strategy }).catch(e => {
         log('webhook_error', `BUY ${symbol} gagal: ${e.message}`);
@@ -346,7 +309,6 @@ async function handle(req, res) {
       return;
     }
 
-    // ── SELL signal ───────────────────────────────────────────────────────────
     if (actionUp === 'SELL') {
       const positions = getAllPositions();
       if (!positions[symbol]) {
@@ -357,7 +319,6 @@ async function handle(req, res) {
         return;
       }
 
-      // Auto-execute sell
       json(res, { ok: true, message: `SELL ${symbol} dieksekusi` });
       _callbacks.executeWebhookSell?.({ symbol, price, strategy }).catch(e => {
         log('webhook_error', `SELL ${symbol} gagal: ${e.message}`);
@@ -369,11 +330,9 @@ async function handle(req, res) {
     return;
   }
 
-  // 404
   json(res, { ok: false, error: 'Route tidak ditemukan' }, 404);
 }
 
-// ── Start server ──────────────────────────────────────────────────────────────
 export function startApiServer(callbacks) {
   setApiCallbacks(callbacks);
   const server = http.createServer(async (req, res) => {

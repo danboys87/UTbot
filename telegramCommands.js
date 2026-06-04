@@ -1,12 +1,5 @@
 /**
  * Telegram Command Handler v3.2 — Gainer+UTBot Pipeline
- *
- * Perubahan v3.2:
- *   - Hapus /trend dan /reversal
- *   - /gainer   — tampilkan list koin gainer ≥5%
- *   - /pipeline — jalankan Gainer ≥5% → UTBot pipeline
- *   - /utbot    — UT Bot Alert standalone (semua koin)
- *   - /mtf      — MTF Smart Money screener
  */
 
 import { log }                 from './logger.js';
@@ -79,9 +72,7 @@ async function buildStatusText(callbacks) {
     for (const p of pending) {
       const trig   = p.candidate.triggered ? '⚡' : '⏳';
       const ai     = p.candidate.aiAnalysis?.verdict;
-      const strat  = p.candidate.strategy === 'gainerUTBot' ? '[🚀📡]'
-                   : p.candidate.strategy === 'utbot'       ? '[📡]'
-                   :                                          '[🧠]';
+      const strat  = p.candidate.strategy === 'gainerUTBot' ? '[🚀📡]' : '[📡]';
       const aiTag  = ai ? ` 🤖 ${ai}` : '';
       text += `  ${trig} ${strat} <b>${p.symbol}</b>${aiTag} — sisa ${p.minsLeft}m\n`;
     }
@@ -133,14 +124,6 @@ async function handleCommand(chatId, text, callbacks) {
     }
 
     // ── Screener ─────────────────────────────────────────────────────────────
-    case '/mtf': {
-      await reply(chatId, '🧠 MTF Smart Money Screening dimulai...\n🤖 AI analisa akan berjalan otomatis.');
-      callbacks.doMTFScreening()
-        .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat MTF.'); })
-        .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
-      break;
-    }
-
     case '/gainer': {
       await reply(chatId, '🚀 Mengambil daftar Gainer ≥5%...');
       callbacks.doGainerScreening?.()
@@ -190,8 +173,8 @@ async function handleCommand(chatId, text, callbacks) {
     }
 
     case '/screen': {
-      await reply(chatId, '🔍 Menjalankan MTF + Gainer+UTBot pipeline...');
-      callbacks.doScreening?.()
+      await reply(chatId, '🔍 Menjalankan Gainer+UTBot pipeline...');
+      callbacks.doGainerUTBotScreening?.()
         .then(c => { if (!c?.length) reply(chatId, '⚠️ Tidak ada kandidat.'); })
         .catch(e => reply(chatId, `⚠️ Error: ${e.message}`));
       break;
@@ -299,7 +282,7 @@ async function handleCommand(chatId, text, callbacks) {
         const trig  = p.candidate.triggered ? '⚡ <b>TRIGGERED</b>' : '⏳ pre-alert';
         const ai    = p.candidate.aiAnalysis;
         const aiStr = ai ? `\n   🤖 AI: <b>${ai.verdict}</b> (${ai.confidence}%) — ${ai.summary?.slice(0, 80)}...` : '';
-        const stratIcon = p.candidate.strategy === 'gainerUTBot' ? '🚀📡' : p.candidate.strategy === 'utbot' ? '📡' : '🧠';
+        const stratIcon = p.candidate.strategy === 'gainerUTBot' ? '🚀📡' : '📡';
         const chg   = p.candidate.change24h >= 0 ? `+${p.candidate.change24h?.toFixed(2)}` : p.candidate.change24h?.toFixed(2);
 
         msg += `${stratIcon} <b>${p.symbol}</b> (${chg}%) [${trig}]${aiStr}\n`;
@@ -367,13 +350,12 @@ async function handleCommand(chatId, text, callbacks) {
     case '/help':
     default: {
       await reply(chatId,
-        `🤖 <b>Bot v3.2 — MTF + Gainer UTBot Pipeline</b>\n\n` +
+        `🤖 <b>Bot v3.2 — Gainer UTBot Pipeline</b>\n\n` +
         `<b>📡 Screening:</b>\n` +
-        `/mtf             — MTF Smart Money (1D+4H+1H)\n` +
         `/gainer          — Tampilkan koin naik ≥5% hari ini\n` +
         `/pipeline        — Gainer ≥5% → UTBot BUY signal (utama)\n` +
         `/utbot           — UTBot standalone (semua koin)\n` +
-        `/screen          — Jalankan MTF + Pipeline sekaligus\n\n` +
+        `/screen          — Jalankan pipeline sekarang\n\n` +
         `<b>🤖 AI Analyst:</b>\n` +
         `/analyze SYMBOL  — Analisa AI lengkap on-demand\n\n` +
         `<b>✅ Approval Split Entry:</b>\n` +

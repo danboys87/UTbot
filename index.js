@@ -1,10 +1,9 @@
 /**
- * Bitget Spot Trading Bot v3.2 — MTF Smart Money + Gainer UTBot Pipeline
+ * Bitget Spot Trading Bot v3.2 — Gainer UTBot Pipeline
  * Entry point utama
  *
  * Screener aktif:
- *  1. MTF Smart Money (cron 07:30 / 13:00 / 19:00 WIB)
- *  2. Gainer ≥5% → UT Bot Alert pipeline (cron per jam atau manual)
+ *  1. Gainer ≥5% → UT Bot Alert pipeline (cron per jam atau manual)
  */
 
 import { createRequire } from 'module';
@@ -17,7 +16,6 @@ import readline from 'readline';
 import { log }                from './logger.js';
 import { config }             from './config.js';
 import { testConnection, getCurrentPrice, getAllTickers } from './bitget.js';
-import { runMTFScreening }              from './screenerMTF.js';
 import { runGainerScreening }           from './screenerGainer.js';
 import { runUTBotScreener }             from './screenerUTBot.js';
 import { runGainerUTBotPipeline }       from './screenerGainerUTBot.js';
@@ -27,7 +25,7 @@ import { getStats, getOpenSymbols, getAllPositions, initState } from './state.js
 import {
   notifyStartup, notifyBuy, notifySell,
   notifyScreening, notifyApprovalRequest,
-  notifyPreAlert, notifyStats, notifyError, notifyUTBot, isEnabled,
+  notifyStats, notifyError, notifyUTBot, isEnabled,
 } from './telegram.js';
 import { startTelegramPolling, stopTelegramPolling } from './telegramCommands.js';
 import { startApiServer } from './apiServer.js';
@@ -39,7 +37,6 @@ import {
 const isDryRun = process.env.DRY_RUN === 'true';
 const args     = process.argv.slice(2);
 
-let _screenBusy = false;
 let _utbotBusy  = false;
 let _manageBusy = false;
 let _cronTasks  = [];
@@ -113,46 +110,6 @@ async function sendApprovalRequests(candidates) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MTF SCREENING
-// ─────────────────────────────────────────────────────────────────────────────
-export async function doMTFScreening() {
-  if (_screenBusy) { log('cron', 'Screening masih berjalan, skip'); return []; }
-  _screenBusy = true;
-  try {
-    const open = getOpenSymbols().length;
-    const max  = config.trading.maxOpenPositions;
-    if (open >= max) { log('screener', `Skip MTF: posisi penuh (${open}/${max})`); return []; }
-
-    log('screener', '🧠 Menjalankan MTF Smart Money Screening...');
-    const tickers    = await getAllTickers();
-    const candidates = await runMTFScreening(tickers, config);
-
-    await notifyScreening({ found: candidates.length, total: config.screening?.mtf?.checkLimit ?? 100, symbols: candidates.map(c => c.symbol), strategy: 'MTF Smart Money' });
-
-    if (!candidates.length) return [];
-
-    const triggered = candidates.filter(c => c.triggered);
-    const preAlert  = candidates.filter(c => !c.triggered);
-
-    if (triggered.length > 0) {
-      log('screener', `✅ ${triggered.length} kandidat triggered → approval queue`);
-      await sendApprovalRequests(triggered);
-    }
-    if (preAlert.length > 0) {
-      log('screener', `⏳ ${preAlert.length} kandidat pre-alert → notif pantau`);
-      await notifyPreAlert(preAlert);
-    }
-    return candidates;
-  } catch (err) {
-    log('cron_error', `MTF screening error: ${err.message}`);
-    await notifyError(`MTF screening error: ${err.message}`);
-    return [];
-  } finally {
-    _screenBusy = false;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // GAINER + UTBOT PIPELINE
 // ─────────────────────────────────────────────────────────────────────────────
 export async function doGainerUTBotScreening() {
@@ -193,7 +150,7 @@ export async function doGainerUTBotScreening() {
 
     if (eligible.length > 0) {
       log('screener', `  ${eligible.length} kandidat → approval queue`);
-      await notifyUTBot(eligible); // kirim ringkasan UTBot dulu
+      await notifyUTBot(eligible);
       await sendApprovalRequests(eligible);
     }
 
@@ -255,8 +212,8 @@ export async function doUTBotScreener() {
 // GAINER ONLY (untuk command /gainer manual — tampilkan list saja)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function doGainerScreening() {
-  if (_screenBusy) { log('cron', 'Screening masih berjalan, skip'); return []; }
-  _screenBusy = true;
+  if (_utbotBusy) { log('cron', 'Screening masih berjalan, skip'); return []; }
+  _utbotBusy = true;
   try {
     const gainers = await runGainerScreening();
     await notifyScreening({ found: gainers.length, total: 0, symbols: gainers.map(g => g.symbol), strategy: 'Gainer ≥5% (list)' });
@@ -265,46 +222,13 @@ export async function doGainerScreening() {
     log('cron_error', `Gainer error: ${err.message}`);
     return [];
   } finally {
-    _screenBusy = false;
+    _utbotBusy = false;
   }
 }
 
 export async function doScreening() {
-  log('screener', '🔍 Menjalankan MTF + Gainer+UTBot...');
-  const r1 = await doMTFScreening();
-  await sleep(1000);
-  const r2 = await doGainerUTBotScreening();
-  return [...r1, ...r2];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PRE-ALERT RECHECK
-// ─────────────────────────────────────────────────────────────────────────────
-export async function doPreAlertRecheck() {
-  if (_screenBusy) { log('cron', 'Screening masih berjalan, skip pre-alert recheck'); return; }
-  const pending   = getPendingQueue();
-  const preAlerts = pending.filter(p => !p.candidate.triggered);
-  if (!preAlerts.length) { log('cron', '⏳ Pre-alert recheck: tidak ada kandidat'); return; }
-
-  log('cron', `⏳ Pre-alert recheck: ${preAlerts.length} kandidat → ${preAlerts.map(p => p.symbol).join(', ')}`);
-  _screenBusy = true;
-  try {
-    const tickers         = await getAllTickers();
-    const preAlertSymbols = preAlerts.map(p => p.symbol);
-    const filteredTickers = tickers.filter(t => preAlertSymbols.includes(t.symbol));
-    if (!filteredTickers.length) return;
-
-    const candidates   = await runMTFScreening(filteredTickers, config);
-    const nowTriggered = candidates.filter(c => c.triggered);
-    if (nowTriggered.length > 0) {
-      log('cron', `✅ ${nowTriggered.length} pre-alert sekarang TRIGGERED`);
-      await sendApprovalRequests(nowTriggered);
-    }
-  } catch (err) {
-    log('cron_error', `Pre-alert recheck error: ${err.message}`);
-  } finally {
-    _screenBusy = false;
-  }
+  log('screener', '🔍 Menjalankan Gainer+UTBot...');
+  return await doGainerUTBotScreening();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -331,42 +255,24 @@ export { approveCandidate, skipCandidate, getPendingQueue };
 function startCron() {
   stopCron();
 
-  const manageMin   = config.schedule?.managementIntervalMin    ?? 5;
-  const preAlertMin = config.schedule?.preAlertRecheckMin       ?? 60;
-  const utbotMin    = config.screening?.utbot?.checkIntervalMin ?? 60;
-  const mtfCron     = config.schedule?.mtfCron  || '30 0 * * *';
-  const mtfCron2    = config.schedule?.mtfCron2 || '0 6 * * *';
-  const mtfCron3    = config.schedule?.mtfCron3 || '0 12 * * *';
+  const manageMin = config.schedule?.managementIntervalMin    ?? 5;
+  const utbotMin  = config.screening?.utbot?.checkIntervalMin ?? 60;
 
-  const cronManage   = intervalToCron(manageMin);
-  const cronPreAlert = intervalToCron(preAlertMin);
-  const cronUtbot    = intervalToCron(utbotMin);
+  const cronManage = intervalToCron(manageMin);
+  const cronUtbot  = intervalToCron(utbotMin);
 
   log('cron', `Cron aktif:`);
-  log('cron', `  MTF Pagi    : ${mtfCron}  → 07:30 WIB`);
-  log('cron', `  MTF Siang   : ${mtfCron2} → 13:00 WIB`);
-  log('cron', `  MTF Sore    : ${mtfCron3} → 19:00 WIB`);
-  log('cron', `  Gainer+UTBot: ${cronUtbot}     → setiap ${utbotMin} menit`);
-  log('cron', `  Pre-alert   : ${cronPreAlert}  → setiap ${preAlertMin} menit`);
-  log('cron', `  Management  : ${cronManage}    → setiap ${manageMin} menit`);
-
-  const mtfTask1 = cron.schedule(mtfCron,  () => { log('cron', '🌅 MTF pagi'); doMTFScreening(); },   { timezone: 'UTC' });
-  const mtfTask2 = cron.schedule(mtfCron2, () => { log('cron', '☀️  MTF siang'); doMTFScreening(); }, { timezone: 'UTC' });
-  const mtfTask3 = cron.schedule(mtfCron3, () => { log('cron', '🌆 MTF sore');  doMTFScreening(); }, { timezone: 'UTC' });
+  log('cron', `  Gainer+UTBot: ${cronUtbot} → setiap ${utbotMin} menit`);
+  log('cron', `  Management  : ${cronManage} → setiap ${manageMin} menit`);
 
   const manageTask = cron.schedule(cronManage, doManagement);
-
-  const preAlertTask = cron.schedule(cronPreAlert, () => {
-    log('cron', `🔄 Pre-alert recheck`);
-    doPreAlertRecheck();
-  });
 
   const utbotTask = cron.schedule(cronUtbot, () => {
     log('cron', `🚀📡 Gainer+UTBot pipeline (setiap ${utbotMin} menit)`);
     doGainerUTBotScreening();
   });
 
-  _cronTasks = [mtfTask1, mtfTask2, mtfTask3, manageTask, preAlertTask, utbotTask];
+  _cronTasks = [manageTask, utbotTask];
 }
 
 function stopCron() {
@@ -395,9 +301,7 @@ async function showStatus() {
     console.log(`\n  ⏳ Menunggu Approval (${pending.length}):`);
     for (const p of pending) {
       const triggered = p.candidate.triggered ? '⚡ TRIGGERED' : '⏳ pre-alert';
-      const strat     = p.candidate.strategy === 'gainerUTBot' ? '[Gainer+UTBot]'
-                      : p.candidate.strategy === 'utbot'       ? '[UTBot]'
-                      :                                          '[MTF]';
+      const strat     = p.candidate.strategy === 'gainerUTBot' ? '[Gainer+UTBot]' : '[UTBot]';
       console.log(`    ${strat} ${p.symbol} — sisa ${p.minsLeft} menit [${triggered}]`);
     }
   }
@@ -425,7 +329,7 @@ async function showStatus() {
 // ─────────────────────────────────────────────────────────────────────────────
 function startREPL() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '\n[bitget-bot v3.2] > ' });
-  console.log('\n📖 Perintah: status | mtf | gainer | utbot | pipeline | screen | manage | stats | stop | help\n');
+  console.log('\n📖 Perintah: status | gainer | utbot | pipeline | screen | manage | stats | stop | help\n');
   rl.prompt();
 
   rl.on('line', async (line) => {
@@ -433,7 +337,6 @@ function startREPL() {
     if (!cmd) { rl.prompt(); return; }
     switch (cmd) {
       case 'status':   await showStatus(); break;
-      case 'mtf':      await doMTFScreening(); break;
       case 'gainer':   await doGainerScreening(); break;
       case 'utbot':    await doUTBotScreener(); break;
       case 'pipeline': await doGainerUTBotScreening(); break;
@@ -445,11 +348,10 @@ function startREPL() {
         console.log([
           '',
           '  status   — posisi terbuka & PnL',
-          '  mtf      — jalankan MTF Smart Money screener',
           '  gainer   — tampilkan koin gainer ≥5%',
           '  utbot    — UT Bot Alert screener standalone',
           '  pipeline — Gainer ≥5% → UTBot (pipeline utama)',
-          '  screen   — MTF + Pipeline sekaligus',
+          '  screen   — jalankan pipeline sekarang',
           '  manage   — cek TP/SL semua posisi',
           '  stats    — kirim ringkasan ke Telegram',
           '  stop     — hentikan bot',
@@ -469,7 +371,7 @@ function startREPL() {
 async function main() {
   console.log('');
   console.log('╔══════════════════════════════════════════════════╗');
-  console.log('║  Bitget Spot Bot v3.2 — MTF + Gainer UTBot       ║');
+  console.log('║  Bitget Spot Bot v3.2 — Gainer UTBot Pipeline    ║');
   console.log('╚══════════════════════════════════════════════════╝');
   console.log(`  Mode: ${isDryRun ? '🧪 DRY RUN' : '💸 LIVE TRADING'}`);
   console.log('');
@@ -483,25 +385,22 @@ async function main() {
     log('startup', '🧪 DRY RUN mode - API connection skipped');
   }
 
-  const cfg         = config;
-  const pct1        = cfg.trading.splitEntry?.portion1Pct ?? 55;
-  const pct2        = cfg.trading.splitEntry?.portion2Pct ?? 45;
-  const manageMin   = cfg.schedule?.managementIntervalMin ?? 5;
-  const preAlertMin = cfg.schedule?.preAlertRecheckMin    ?? 60;
-  const utbotMin    = cfg.screening?.utbot?.checkIntervalMin ?? 60;
+  const cfg       = config;
+  const pct1      = cfg.trading.splitEntry?.portion1Pct ?? 55;
+  const pct2      = cfg.trading.splitEntry?.portion2Pct ?? 45;
+  const manageMin = cfg.schedule?.managementIntervalMin ?? 5;
+  const utbotMin  = cfg.screening?.utbot?.checkIntervalMin ?? 60;
 
   log('startup', `Config:`);
   log('startup', `  Budget/trade : ${cfg.trading.budgetPerTrade} USDT (E1 ${pct1}%: ${(cfg.trading.budgetPerTrade * pct1 / 100).toFixed(0)}, E2 ${pct2}%: ${(cfg.trading.budgetPerTrade * pct2 / 100).toFixed(0)})`);
   log('startup', `  Max posisi   : ${cfg.trading.maxOpenPositions}`);
   log('startup', `  Min gainer   : ${cfg.screening?.gainer?.minGainPct ?? 5}%`);
   log('startup', `Jadwal:`);
-  log('startup', `  MTF          : 07:30 / 13:00 / 19:00 WIB`);
   log('startup', `  Gainer+UTBot : setiap ${utbotMin} menit`);
   log('startup', `  Management   : setiap ${manageMin} menit`);
 
   await notifyStartup(isDryRun, config);
 
-  if (args.includes('--screen-only'))   { await doMTFScreening(); process.exit(0); }
   if (args.includes('--manage-only'))   { await doManagement(); process.exit(0); }
   if (args.includes('--pipeline-only')) { await doGainerUTBotScreening(); process.exit(0); }
   if (args.includes('--utbot-only'))    { await doUTBotScreener(); process.exit(0); }
@@ -528,8 +427,7 @@ async function main() {
   };
 
   startTelegramPolling({
-    doScreening:        doMTFScreening,
-    doMTFScreening,
+    doScreening:            doScreening,
     doGainerScreening,
     doUTBotScreener,
     doGainerUTBotScreening,
@@ -545,7 +443,6 @@ async function main() {
   });
 
   startApiServer({
-    doMTFScreening,
     doGainerScreening,
     doUTBotScreener,
     doGainerUTBotScreening,
