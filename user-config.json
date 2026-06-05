@@ -4,7 +4,7 @@
     "budgetPerTrade": 150,
     "maxOpenPositions": 5,
     "gasReserve": 3,
-    "approvalTimeoutMin": 60,
+    "approvalTimeoutMin": 30,
     "manualApproval": true,
     "splitEntry": {
       "enabled": true,
