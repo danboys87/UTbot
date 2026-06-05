@@ -266,4 +266,23 @@ function formatMarketData(symbol, md) {
       `  Last Closed   : ${d.lastClosedPrice?.toFixed(6) ?? 'N/A'} | Candles: ${d.candleCount}`,
       `  EMA9   : ${d.ema9?.toFixed(6) ?? 'N/A'} | EMA21: ${d.ema21?.toFixed(6) ?? 'N/A'} | EMA50: ${d.ema50?.toFixed(6) ?? 'N/A'}`,
       `  RSI14  : ${d.rsi14?.toFixed(1) ?? 'N/A'}`,
-      `  MACD   : ${d.macd ? `line=${d.macd.macd.toFixed(6
+      `  MACD   : ${d.macd ? `line=${d.macd.macd.toFixed(6)} signal=${d.macd.signal.toFixed(6)} hist=${d.macd.histogram.toFixed(6)}` : 'N/A'}`,
+      `  BB     : ${d.bb ? `upper=${d.bb.upper.toFixed(6)} mid=${d.bb.middle.toFixed(6)} lower=${d.bb.lower.toFixed(6)} %B=${d.bb.pctB.toFixed(2)}` : 'N/A'}`,
+      `  ADX    : ${d.adx ? `adx=${d.adx.adx.toFixed(1)} +DI=${d.adx.plusDI.toFixed(1)} -DI=${d.adx.minusDI.toFixed(1)}` : 'N/A'}`,
+      `  H/L 20 : ${d.high20?.toFixed(6)} / ${d.low20?.toFixed(6)}`,
+      `  H/L 5  : ${d.high5?.toFixed(6)} / ${d.low5?.toFixed(6)}`,
+      `  Vol    : ${d.lastVol?.toFixed(0)} (avg10: ${d.avgVol10?.toFixed(0)}) ratio=${d.avgVol10 > 0 ? (d.lastVol / d.avgVol10).toFixed(2) : 'N/A'}x`,
+    ].join('\n');
+  };
+
+  return [`SYMBOL: ${symbol}`, fmt('1D', md['1D']), fmt('4H', md['4H']), fmt('1H', md['1H'])].join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sentiment analysis
+// ─────────────────────────────────────────────────────────────────────────────
+async function getSentimentAnalysis(symbol) {
+  const coinName = symbol.replace('USDT', '');
+
+  // Gemini: coba Google Search Grounding untuk berita terkini
+  if (getProvider() === 'gemini' && process
