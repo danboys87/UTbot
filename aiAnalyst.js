@@ -285,4 +285,245 @@ async function getSentimentAnalysis(symbol) {
   const coinName = symbol.replace('USDT', '');
 
   // Gemini: coba Google Search Grounding untuk berita terkini
-  if (getProvider() === 'gemini' && process
+  if (getProvider() === 'gemini' && process.env.GEMINI_API_KEY) {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const url   = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: 'Analis sentimen crypto. Jawab Bahasa Indonesia, max 200 kata, faktual.' }] },
+          contents: [{ role: 'user', parts: [{ text: `Cari sentimen market terkini ${coinName} (${symbol}): berita 7 hari terakhir, katalis positif/negatif, risiko utama.` }] }],
+          tools: [{ googleSearch: {} }],
+          generationConfig: { maxOutputTokens: 500, temperature: 0.2 },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) { log('ai_analyst', '  Sentimen via Google Search Grounding ✅'); return text.trim(); }
+      }
+    } catch {}
+  }
+
+  const result = await callAI({
+    maxTokens:    400,
+    systemPrompt: `Kamu analis sentimen crypto. Jawab Bahasa Indonesia, max 150 kata. Fokus: tren umum, sentimen komunitas, risiko utama ${coinName}.`,
+    userPrompt:   `Analisa sentimen market terkini untuk ${coinName} (${symbol}). Sebutkan faktor bullish dan bearish yang relevan saat ini.`,
+  });
+
+  return result || `Data sentimen ${coinName} tidak tersedia saat ini.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Technical analysis — prompt disesuaikan pipeline Gainer + UTBot
+// ─────────────────────────────────────────────────────────────────────────────
+async function getTechnicalAnalysis(symbol, marketDataStr, sentimentSummary) {
+
+  const systemPrompt = `Kamu adalah AI Trading Analyst senior spesialis crypto spot trading.
+
+KONTEKS STRATEGI:
+Bot ini menggunakan pipeline Gainer + UT Bot Alert:
+1. Gainer Filter: koin yang naik 5-20% dalam 24 jam dengan volume ≥$5M
+2. UT Bot Signal (1H): ATR Trailing Stop crossover — close baru saja menembus ke atas trailing stop
+3. Filter EMA21 1H: close > EMA21 1H sebagai konfirmasi trend jangka pendek
+
+TUGASMU — evaluasi apakah setup ini LAYAK di-trade sekarang:
+
+A. VALIDASI MOMENTUM GAINER
+   - Apakah kenaikan 5-20% didukung volume yang sehat (vol ratio > 1.5x avg)?
+   - Apakah RSI sudah overbought (>75) atau masih ada ruang?
+   - Apakah ini breakout genuine atau sekadar pump tanpa struktur?
+
+B. VALIDASI UT BOT SIGNAL
+   - Level trailing stop UTBot = area SL kandidat
+   - Apakah jarak entry ke SL (trailing stop) masuk akal vs potensi upside?
+   - Apakah EMA stack 1H/4H mendukung arah naik?
+
+C. KONDISI TREND BESAR (1D)
+   - Apakah trend harian mendukung (price > EMA21 1D)?
+   - Apakah ini searah trend atau counter-trend?
+   - Kalau counter-trend: lebih berisiko, confidence harus lebih rendah
+
+D. LEVEL KRITIS
+   - Resistance terdekat di atas (target realistis TP1)
+   - Support kuat di bawah (konfirmasi area SL)
+   - R:R minimal 1:2 dari entry ke SL vs entry ke TP1
+
+ATURAN VERDICT:
+- BUY_NOW : Volume sehat + RSI tidak overbought + trend 1D bullish + R:R ≥ 1:2 + UTBot signal valid
+- WAIT    : Setup menarik tapi salah satu belum terpenuhi (misal RSI tinggi, tunggu pullback, atau volume kurang meyakinkan)
+- SKIP    : RSI sudah sangat overbought (>80) ATAU volume tidak mendukung ATAU trend 1D bearish ATAU R:R < 1:1.5
+
+KEMBALIKAN JSON VALID SAJA, tanpa teks lain:
+{
+  "verdict": "BUY_NOW" | "WAIT" | "SKIP",
+  "confidence": <0-100>,
+  "summary": "<harga live — 1-2 kalimat kondisi keseluruhan>",
+  "momentum": {
+    "gainerValid": true | false,
+    "volumeRatio": "<vol kemarin vs avg10 — contoh: 2.3x>",
+    "rsiStatus": "<contoh: RSI 1H=62 — ruang masih ada>",
+    "pumpOrBreakout": "<genuine breakout / pump tanpa struktur / belum jelas>"
+  },
+  "utbotSignal": {
+    "slLevel": "<trailing stop level — ini SL kandidat>",
+    "entryIdeal": "<area entry ideal berdasarkan harga sekarang>",
+    "tp1Level": "<resistance terdekat berdasarkan high20 atau struktur 4H>",
+    "rrRatio": "<R:R dihitung dari entry ke SL dan entry ke TP1>",
+    "riskPct": "<(entry - SL) / entry * 100>"
+  },
+  "trendAlignment": {
+    "daily": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "h4": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "h1": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "aligned": true | false,
+    "note": "<penjelasan singkat apakah 3 TF searah atau tidak>"
+  },
+  "sentiment": {
+    "overall": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "catalysts": "<faktor positif>",
+    "risks": "<faktor risiko / potensi reversal>"
+  },
+  "keyLevels": {
+    "currentPrice": "<harga live>",
+    "resistance1": "<resistance terdekat di atas>",
+    "support1": "<support kuat di bawah>",
+    "criticalLevel": "<level penentu — biasanya EMA21 1D atau swing low>"
+  },
+  "recommendation": "<paragraf rekomendasi konkret: entry di mana, SL di mana, TP1 di mana, dan kondisi apa yang membatalkan setup>"
+}`;
+
+  const maxSentimentLen = 300;
+  const trimmedSentiment = sentimentSummary.length > maxSentimentLen
+    ? sentimentSummary.slice(0, maxSentimentLen) + '...'
+    : sentimentSummary;
+
+  const userPrompt = `Analisa trading setup Gainer+UTBot untuk ${symbol}:
+
+=== DATA TEKNIKAL ===
+${marketDataStr}
+
+=== SENTIMEN MARKET ===
+${trimmedSentiment}
+
+INSTRUKSI:
+1. Fokus pada validasi momentum gainer dan UTBot signal — bukan analisa MTF SMC
+2. SL diasumsikan di level trailing stop UTBot (terlihat dari data 1H low terbaru / low5)
+3. TP1 berdasarkan resistance terdekat — pakai high20 4H atau high5 1H sebagai referensi
+4. R:R WAJIB dihitung dari harga ENTRY (bukan harga live jika berbeda)
+5. Semua field angka WAJIB diisi dengan nilai konkret dari data
+6. Verdict WAIT jika setup menarik tapi butuh konfirmasi lebih, bukan langsung SKIP
+
+Kembalikan JSON valid sesuai format.`;
+
+  const raw = await callAI({ systemPrompt, userPrompt, maxTokens: 2000 });
+  if (!raw) {
+    log('ai_analyst_error', 'Model mengembalikan response kosong');
+    return null;
+  }
+
+  // Parse JSON dengan beberapa fallback
+  const attempts = [
+    () => JSON.parse(raw.trim()),
+    () => JSON.parse(raw.replace(/```json|```/g, '').trim()),
+    () => { const m = raw.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; },
+    () => {
+      const lines = raw.split('\n');
+      const start = lines.findIndex(l => l.trim().startsWith('{'));
+      if (start === -1) return null;
+      return JSON.parse(lines.slice(start).join('\n').replace(/```/g, '').trim());
+    },
+  ];
+
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const result = attempts[i]();
+      if (result && result.verdict) {
+        if (i > 0) log('ai_analyst', `  JSON parsed dengan method ${i + 1}`);
+        return result;
+      }
+    } catch {}
+  }
+
+  log('ai_analyst_error', `Parse JSON gagal. Raw (200 char): ${raw.slice(0, 200)}`);
+
+  // Retry dengan prompt strict
+  log('ai_analyst', '  Retry dengan prompt strict...');
+  const raw2 = await callAI({
+    systemPrompt,
+    userPrompt: `Berikan HANYA JSON valid untuk analisa ${symbol}. ${userPrompt.slice(0, 400)}`,
+    maxTokens: 1500,
+  });
+  if (raw2) {
+    try {
+      const m = raw2.match(/\{[\s\S]*\}/);
+      const result = m ? JSON.parse(m[0]) : null;
+      if (result?.verdict) { log('ai_analyst', '  ✅ Retry berhasil'); return result; }
+    } catch {}
+  }
+
+  log('ai_analyst_error', 'Semua parse attempt gagal');
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// On-demand analysis (dipanggil via /analyze dari Telegram)
+// ─────────────────────────────────────────────────────────────────────────────
+export async function analyzeOnDemand(symbol) {
+  if (!isAIEnabled()) {
+    log('ai_analyst', `⚠ AI tidak aktif — provider: ${getProvider()}`);
+    return null;
+  }
+
+  log('ai_analyst', `🤖 On-demand: ${symbol} [${getProvider()}/${getModelName()}]`);
+  try {
+    log('ai_analyst', `  Step 1: Fetch market data...`);
+    const marketData = await buildMarketData(symbol);
+    if (!marketData) {
+      log('ai_analyst_error', `  ❌ Market data gagal untuk ${symbol}`);
+      return null;
+    }
+    log('ai_analyst', `  ✅ Market data OK`);
+
+    const marketDataStr = formatMarketData(symbol, marketData);
+
+    log('ai_analyst', `  Step 2: Fetch sentiment...`);
+    const sentiment = await getSentimentAnalysis(symbol);
+    log('ai_analyst', `  ✅ Sentiment OK`);
+
+    log('ai_analyst', `  Step 3: Technical analysis...`);
+    const analysis = await getTechnicalAnalysis(symbol, marketDataStr, sentiment);
+
+    if (!analysis) {
+      log('ai_analyst_error', `  ❌ Analisa gagal`);
+      return null;
+    }
+
+    log('ai_analyst', `  ✅ Selesai: ${analysis.verdict} (${analysis.confidence}%)`);
+    return analysis;
+
+  } catch (err) {
+    log('ai_analyst_error', `analyzeOnDemand ${symbol}: ${err.message}`);
+    return null;
+  }
+}
+
+// Tidak dipakai lagi (MTF dihapus) — tapi tetap export agar tidak break import lain
+export async function analyzeCandidate(candidate) {
+  return analyzeOnDemand(candidate.symbol);
+}
+
+export function getAIStatus() {
+  return {
+    enabled:  isAIEnabled(),
+    provider: getProvider(),
+    model:    getModelName(),
+    keySet: {
+      openrouter: !!process.env.OPENROUTER_API_KEY,
+      gemini:     !!process.env.GEMINI_API_KEY,
+      claude:     !!process.env.ANTHROPIC_API_KEY,
+    },
+  };
+}
