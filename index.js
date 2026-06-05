@@ -97,7 +97,7 @@ async function executeBuyAll(candidate) {
 
 setCallbacks({
   onApprove: executeBuyEntry1,
-  onExpire:  (symbol) => notifyError(`⏰ Konfirmasi ${symbol} expired, dilewati.`),
+  onExpire:  (symbol) => log('approval', `⏰ ${symbol} expired tanpa konfirmasi`),
 });
 
 export { executeBuyEntry2, executeBuyAll };
