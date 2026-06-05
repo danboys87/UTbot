@@ -3,9 +3,9 @@
  * Digunakan untuk analisa manual via /analyze SYMBOL dari Telegram.
  *
  * Provider yang didukung (set di .env):
- * AI_PROVIDER=openrouter
- * AI_PROVIDER=gemini
- * AI_PROVIDER=claude
+ *   AI_PROVIDER=openrouter
+ *   AI_PROVIDER=gemini
+ *   AI_PROVIDER=claude
  */
 
 import { getCandles, getCurrentPrice } from './bitget.js';
