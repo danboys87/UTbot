@@ -22,6 +22,7 @@ import { runGainerUTBotPipeline }       from './screenerGainerUTBot.js';
 import { runManagementCycle }           from './manager.js';
 import { executeBuy }                   from './executor.js';
 import { getStats, getOpenSymbols, getAllPositions, initState } from './state.js';
+import { initSymbolFilter } from './symbolFilter.js';
 import {
   notifyStartup, notifyBuy, notifySell,
   notifyScreening, notifyApprovalRequest,
@@ -406,6 +407,7 @@ async function main() {
   if (args.includes('--utbot-only'))    { await doUTBotScreener(); process.exit(0); }
 
   await initState();
+  await initSymbolFilter(); // load daftar crypto spot dari Bitget API
 
   log('startup', 'Menjalankan management cycle pertama...');
   await doManagement();

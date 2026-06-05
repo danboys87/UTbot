@@ -2,24 +2,14 @@
  * Screener — Daily Gainer ≥5%
  * Mencari koin spot Bitget yang naik minimal 5% dalam 24 jam.
  *
- * Kriteria:
- *  1. Perubahan harga 24h >= minGainPct (default 5%)
- *  2. Volume 24h >= minVolume24h
- *  3. Belum punya posisi terbuka
- *  4. Tidak di-blacklist
- *  5. Bukan tokenized stock (prefix 'r' — rAAPL, rTSLA, dst)
+ * Filter tokenized stocks via symbolFilter.js (field areaSymbol dari API Bitget).
  */
 
-import { getAllTickers } from './bitget.js';
-import { config }        from './config.js';
-import { log }           from './logger.js';
-import { hasPosition }   from './state.js';
-
-function isTokenizedStock(symbol) {
-  // Bitget tokenized stocks pakai prefix 'r' diikuti huruf kapital
-  // contoh: rAAPLUSDT, rTSLAUSDT, rNVDAUSDT, rQQQUSDT, rSPYUSDT
-  return /^r[A-Z]/.test(symbol);
-}
+import { getAllTickers }      from './bitget.js';
+import { config }             from './config.js';
+import { log }                from './logger.js';
+import { hasPosition }        from './state.js';
+import { filterCryptoOnly }   from './symbolFilter.js';
 
 export async function runGainerScreening() {
   const sc         = config.screening;
@@ -40,10 +30,12 @@ export async function runGainerScreening() {
     return [];
   }
 
-  const gainers = tickers
+  // Filter hanya crypto spot murni (buang tokenized stocks via areaSymbol API)
+  const cryptoTickers = await filterCryptoOnly(tickers);
+
+  const gainers = cryptoTickers
     .filter(t => {
       if (!t.symbol.endsWith(quoteAsset))         return false;
-      if (isTokenizedStock(t.symbol))             return false; // filter saham tokenized
       if (config.blacklist?.includes(t.symbol))   return false;
       if (hasPosition(t.symbol))                  return false;
       if (parseFloat(t.usdtVol || t.quoteVolume || 0) < minVolUsdt) return false;
